@@ -1,5 +1,6 @@
 // SOURCE: openswos game/scripts/SwosVm/Rng.cs (full file)
-// FIDELITY: VERIFIED_PC -- direct mechanical port, no logic changes.
+// FIDELITY: see swos_rng.h -- NextByte()/NextByte2() VERIFIED_PC against
+// ../swos-port/src/util/random.cpp, swosRngReseed() PORT_EXTENSION.
 #include "swos_rng.h"
 #include "swos_tables.h"
 

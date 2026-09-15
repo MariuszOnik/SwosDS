@@ -3,17 +3,35 @@
 // See swos_memory.h for what's NOT yet ported (Memory.Init).
 #include "swos_memory.h"
 
+#include <assert.h>
 #include <string.h>
 
 static uint8_t s_mem[SWOS_MEM_SIZE];
 static bool s_initialised = false;
 
+// Debug-build-only bounds check (assert() is a no-op under NDEBUG, so a
+// release/DS build stays branch-free here). Catches an out-of-range address
+// immediately instead of silently reading/writing adjacent state -- cheap
+// insurance while ~30k more lines get ported on top of this layer.
+static void checkBounds(int addr, int width) {
+    assert(addr >= 0 && addr + width <= SWOS_MEM_SIZE);
+}
+
 uint8_t swosReadByte(int addr) {
+    checkBounds(addr, 1);
     return s_mem[addr];
 }
 
 uint16_t swosReadWord(int addr) {
-    return (uint16_t)(s_mem[addr] | (s_mem[addr + 1] << 8));
+    checkBounds(addr, 2);
+    // Cast each byte to uint32_t *before* shifting: shifting a plain
+    // uint8_t (promoted to int) by 8 is in range here, but the equivalent
+    // dword read below would invoke undefined behaviour at the <<24 step
+    // for any byte >= 0x80 (the shifted value wouldn't fit in a signed
+    // int). Casting first keeps the whole expression unsigned throughout,
+    // so apply the same style to both for one obviously-correct pattern
+    // rather than two "it happens to work" ones.
+    return (uint16_t)((uint32_t)s_mem[addr] | ((uint32_t)s_mem[addr + 1] << 8));
 }
 
 int16_t swosReadSignedWord(int addr) {
@@ -21,10 +39,11 @@ int16_t swosReadSignedWord(int addr) {
 }
 
 uint32_t swosReadDword(int addr) {
-    return (uint32_t)(s_mem[addr]
-                     | (s_mem[addr + 1] << 8)
-                     | (s_mem[addr + 2] << 16)
-                     | (s_mem[addr + 3] << 24));
+    checkBounds(addr, 4);
+    return (uint32_t)s_mem[addr]
+         | ((uint32_t)s_mem[addr + 1] << 8)
+         | ((uint32_t)s_mem[addr + 2] << 16)
+         | ((uint32_t)s_mem[addr + 3] << 24);
 }
 
 int32_t swosReadSignedDword(int addr) {
@@ -32,15 +51,18 @@ int32_t swosReadSignedDword(int addr) {
 }
 
 void swosWriteByte(int addr, int value) {
+    checkBounds(addr, 1);
     s_mem[addr] = (uint8_t)value;
 }
 
-void swosWriteWord(int addr, int value) {
+void swosWriteWord(int addr, uint16_t value) {
+    checkBounds(addr, 2);
     s_mem[addr] = (uint8_t)(value & 0xFF);
     s_mem[addr + 1] = (uint8_t)((value >> 8) & 0xFF);
 }
 
-void swosWriteDword(int addr, int value) {
+void swosWriteDword(int addr, uint32_t value) {
+    checkBounds(addr, 4);
     s_mem[addr] = (uint8_t)(value & 0xFF);
     s_mem[addr + 1] = (uint8_t)((value >> 8) & 0xFF);
     s_mem[addr + 2] = (uint8_t)((value >> 16) & 0xFF);
@@ -57,6 +79,6 @@ bool swosMemoryIsInitialised(void) {
 }
 
 const uint8_t *swosMemoryView(int addr, int length) {
-    (void)length;
+    checkBounds(addr, length);
     return &s_mem[addr];
 }

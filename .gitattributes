@@ -1,0 +1,5 @@
+# Force LF everywhere, regardless of this machine's core.autocrlf. Without
+# this, `tools/convert_addr.py`/`extract_table.py` (which write '\n') and
+# Git's checkout-time CRLF conversion fight each other, making regenerated
+# headers show as "modified" by line endings alone.
+* text=auto eol=lf

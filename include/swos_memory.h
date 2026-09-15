@@ -24,6 +24,10 @@
 // segment 0x00000..0x4F7FF, sprite pool 0x4F800..0x5FFFF).
 #define SWOS_MEM_SIZE 0x60000
 
+// All Read*/Write* helpers and swosMemoryView() bounds-check addr via
+// assert() (a no-op under NDEBUG, so this costs nothing in a release/DS
+// build; the desktop test build keeps it active).
+
 // ---- Read helpers -----------------------------------------------------
 uint8_t swosReadByte(int addr);
 uint16_t swosReadWord(int addr);          // unsigned word
@@ -32,9 +36,14 @@ uint32_t swosReadDword(int addr);
 int32_t swosReadSignedDword(int addr);
 
 // ---- Write helpers ----------------------------------------------------
+// Word/dword take unsigned value types (not the C# port's plain `int`):
+// converting a value like 0xDEADBEEF to a 32-bit *signed* int, or
+// right-shifting a negative int, are both implementation-defined in C. To
+// write a signed value, cast explicitly at the call site:
+// swosWriteDword(addr, (uint32_t)signedValue).
 void swosWriteByte(int addr, int value);
-void swosWriteWord(int addr, int value);
-void swosWriteDword(int addr, int value);
+void swosWriteWord(int addr, uint16_t value);
+void swosWriteDword(int addr, uint32_t value);
 
 // ---- Lifecycle ----------------------------------------------------------
 // Zeroes the backing buffer only. Placeholder for the real swosMemoryInit()

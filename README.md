@@ -78,6 +78,18 @@ done:
 comment for why it pins devkitPro's bundled mingw64 gcc as the *host*
 compiler — unrelated to the project's actual ARM/BlocksDS target toolchain).
 
+**Step 1 hardening pass (same day, after external review):** the Read/Write
+layer had a latent UB bug (see swos_memory.c) and two signatures took `int`
+where an unsigned type was actually required; both fixed. `swosRngReseed()`
+was re-tagged `PORT_EXTENSION` (not `VERIFIED_PC`) — it's an OpenSWOS policy
+with no equivalent in `swos-port`'s `random.cpp`, which never reseeds at
+all; see swos_rng.h for the full note. Added RNG golden vectors computed
+independently in Python (not by calling this repo's C code) and flag
+boundary tests (signed overflow, unsigned carry-out). Added `.gitattributes`
+so regenerating the two generated headers doesn't show as line-ending-only
+diffs. All Read/Write/View calls are now bounds-checked via `assert()`
+(no-op under `NDEBUG`, so a release/DS build pays nothing).
+
 ## Porting order (full plan)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (this session, see Status above)
