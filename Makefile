@@ -24,6 +24,9 @@ BUILD ?= build
 SRCS := $(wildcard src/*.c)
 OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
+TEST_SRCS := $(wildcard tests/*.c)
+TEST_BINS := $(patsubst tests/%.c,$(BUILD)/%,$(TEST_SRCS))
+
 .PHONY: all test clean
 
 all: test
@@ -32,12 +35,12 @@ $(BUILD)/%.o: src/%.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/test_memory: tests/test_memory.c $(OBJS)
+$(BUILD)/%: tests/%.c $(OBJS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $< $(OBJS) -o $@
 
-test: $(BUILD)/test_memory
-	./$(BUILD)/test_memory
+test: $(TEST_BINS)
+	@for t in $(TEST_BINS); do echo "== $$t =="; ./$$t || exit 1; done
 
 clean:
 	rm -rf $(BUILD)
