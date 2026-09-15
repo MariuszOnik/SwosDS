@@ -74,6 +74,14 @@ void swosMemoryInitStub(void) {
     s_initialised = true;
 }
 
+void swosMemoryClear(void) {
+    memset(s_mem, 0, sizeof(s_mem));
+}
+
+void swosMemoryMarkInitialised(void) {
+    s_initialised = true;
+}
+
 bool swosMemoryIsInitialised(void) {
     return s_initialised;
 }

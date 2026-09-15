@@ -35,12 +35,21 @@ separate idiomatic-struct pass — not before.
 - `include/`, `src/` — hand-ported modules (see status below). Each `.c`/`.h`
   carries `SOURCE:` (exact OpenSWOS file/lines) and `FIDELITY:` tags per
   entry.
-- `tools/convert_addr.py`, `tools/extract_table.py` — the generators for the
-  two generated headers above. Re-run them if OpenSWOS's `Memory.cs` /
-  `Rng.cs` / `Tables.cs` change; never edit their output by hand.
-- `tests/test_memory.c` — desktop smoke test (new code, not a port of
-  anything) that cross-checks the ported layer against the literal comments
-  in the C# source.
+- `include/generated/swos_anim_streams.h` — **generated**, do not hand-edit.
+  174 animation frame-indices arrays from `AnimationTablesData.cs`,
+  extracted verbatim (`tools/extract_all_arrays.py`).
+- `tools/convert_addr.py`, `tools/extract_table.py`, `tools/extract_all_arrays.py`
+  — the generators for the generated headers above. Re-run them if the
+  corresponding OpenSWOS source file changes; never edit their output by
+  hand.
+- `tools/csharp-golden-dump/` — a small .NET console harness that compiles
+  OpenSWOS's real `SwosVm` source in place and runs its actual `Memory.Init()`
+  to produce a byte-exact reference dump (see Status: step 2.5 below). Not
+  part of the port itself — verification tooling only.
+- `tests/*.c` — desktop tests (new code, not ports of anything) that
+  cross-check the ported layer against the OpenSWOS source, most notably
+  `tests/test_golden_dump.c` (byte-exact comparison against the C# harness's
+  output).
 
 ## Fidelity tags
 
@@ -137,28 +146,80 @@ below caused a code change, per the corrected fidelity rule):
   OpenSWOS defines it.
 - `swos-port`'s `TeamGeneralInfo` has a `wonTheBallTimer` field (offset 138,
   between `AiBallSpinDirection`/136 and `goalkeeperPlaying`/140) that
-  OpenSWOS's `TeamData.cs` never exposes at all — a real gap in OpenSWOS
-  itself, not a translation error. Left out here too, matching OpenSWOS.
-  Flagged because `wonTheBallTimer` is one of the variables the original
-  reverse-engineering brief (`../audyt-openswos-sim.md`) named as a key
-  dribble/tackle-contest variable — it will likely need to be added once
-  `PlayerActions`/`PlayerControlled` (steps 5-6) are ported. That's a
-  decision for then, not now.
+  OpenSWOS's `TeamData.cs` never exposes as a named accessor. **Correction
+  (after step 2's review): this is a gap in `TeamData.cs`'s semantic API
+  only, not a gap in OpenSWOS's VM** — `PlayerActions.cs`, `PlayerControlled.cs`,
+  `UpdatePlayers.cs` and `Kickoff.cs` all read/write the raw `+ 138` offset
+  directly (confirmed by grep: e.g. `UpdatePlayers.cs:3620` `Memory.WriteWord(tackleOppBase + 138, 12)`,
+  `Kickoff.cs:427` `Memory.WriteWord(teamBase + 138, 0)`), so the mechanic
+  fully works in OpenSWOS today. When those files are ported (steps 5-8),
+  each site's local `+ 138` literal gets ported as written — matching
+  OpenSWOS's own inconsistency (accessor for most TeamData fields, raw
+  offset for this one) rather than "fixing" it into a `swosTeamData*`
+  accessor now, which would be adding something OpenSWOS itself doesn't
+  have. A `swosTeamDataWonTheBallTimer()` accessor is a fine *later*,
+  separate refactor once all four call sites are ported and can be updated
+  together.
 - OpenSWOS's `TeamData.OffOfs108` is an unidentified-field placeholder name;
   swos-port has since identified the same offset as `ballDirectionChangeTimer`.
   Cosmetic only (same offset, same 145-byte total struct size either way).
 - Every other offset in all three files matches swos-port's packed struct
   layout exactly — no other disagreements found.
 
-`swos_memory`'s `Init()` (deferred in step 1 because it calls into these
-three files) is now unblockable, but porting it was out of scope for this
-step and hasn't been done — `swosMemoryInitStub()` (zero-fill only) still
-stands in. Candidate for a small step-2.5, or fold into step 3.
+## Status: step 2.5 (2026-09-15) — `AnimationTablesData` + full `Memory.Init()`, golden-dump verified
+
+`AnimationTablesData.cs` (`swos_anim_tables.{h,c}` + generated
+`include/generated/swos_anim_streams.h`, 174 frame-indices arrays extracted
+mechanically via `tools/extract_all_arrays.py`) and the full
+`Memory.Init(bool pcMode)` (`src/swos_memory_init.c`) are ported, calling
+`swosPlayerSpriteInit()` / `swosAnimTablesInit()` / `swosTeamDataInit()` in
+the exact same order as the source. `swosMemoryInit(bool)` replaces the
+step-1 `swosMemoryInitStub()` placeholder wherever realistic memory state is
+needed (the stub is kept for tests that only want the Read/Write layer in
+isolation).
+
+**Gold-standard verification, per review request:** `tools/csharp-golden-dump`
+is a standalone .NET console harness that compiles OpenSWOS's **actual,
+unmodified** `SwosVm` source files in place (`<Compile Include="../../../openswos/...">`,
+never copied) and runs the *real* `Memory.Init(true)` / `Memory.Init(false)`,
+dumping the full `0x60000`-byte buffer to `build/golden/golden_{pc,amiga}.bin`.
+`tests/test_golden_dump.c` then diffs the C port's own
+`swosMemoryInit(true)` / `swosMemoryInit(false)` output against those files
+byte-for-byte. This is strictly stronger than the round-trip/offset tests
+elsewhere in this repo, which only prove internal self-consistency (a
+setter and getter sharing the same wrong offset would still pass) — this
+proves the C port matches an independent execution of the actual source
+being ported.
+
+**Result: byte-exact match, both modes, first try.** `0x60000` bytes each
+for `pcMode=true` and `pcMode=false`, zero mismatches. Combined with the
+earlier automated cross-check (every `Addr.X`/`Memory.Addr.X` reference in
+`Memory.cs` and `AnimationTablesData.cs`'s `Init()` bodies present and used
+correctly in the C port — 260 + 15 unique names, zero missing, zero extra),
+this is about as strong a correctness signal as this layer can get without
+running the original DOS binary itself.
+
+Setting up the .NET SDK took a short detour (none was installed on this
+machine — see memory `feedback-host-gcc-devkitpro-mingw64` for the sibling
+note about the C host compiler situation); installed via
+`winget install Microsoft.DotNet.SDK.8` with the user's approval. Regenerate
+the golden files with:
+```
+cd tools/csharp-golden-dump && dotnet run -c Release -- ../../build/golden
+```
+(Not wired up as a `make golden` target — invoking `dotnet` through `make`
+on this machine fails inside NuGet for reasons that didn't isolate to
+PATH/TMP/TEMP/HOME individually; not worth more time chasing since the
+direct command works fine and `test_golden_dump.c` prints this same
+instruction if the golden files are missing.)
+
+`make test` (three suites): **72/72** pass (26 + 44 + 2).
 
 ## Porting order (full plan)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
 2. ~~Sprite views: `BallSprite`, `PlayerSprite`, `TeamData`~~ (2026-09-15, see Status above)
+   - ~~2.5: `AnimationTablesData` + full `Memory.Init()`, golden-dump verified~~ (2026-09-15, see Status above)
 3. `SpriteUpdate`
 4. `BallUpdate`
 5. `PlayerActions`

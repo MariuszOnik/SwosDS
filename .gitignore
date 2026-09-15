@@ -1,3 +1,7 @@
 build/
 *.o
 *.exe
+
+# dotnet build artifacts for tools/csharp-golden-dump
+tools/csharp-golden-dump/bin/
+tools/csharp-golden-dump/obj/

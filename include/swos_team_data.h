@@ -13,15 +13,18 @@
 //     Cosmetic only (same offset, same semantics either way) -- kept as
 //     OpenSWOS names it.
 //   - swos-port's struct has a `wonTheBallTimer` field (offset 138, right
-//     after OffAiBallSpinDirection/136) that OpenSWOS's TeamData.cs simply
-//     never exposes at all. This is a real gap in OpenSWOS itself, not a
-//     translation error -- left out here too, matching OpenSWOS. Flagged
-//     because `wonTheBallTimer` is one of the variables the original
-//     reverse-engineering brief (audyt-openswos-sim.md) named as a key
-//     dribble/tackle-contest variable -- it will likely need to be added
-//     when PlayerActions/PlayerControlled (steps 5-6) are ported, at which
-//     point this is a decision for the user, not something to silently add
-//     now while porting a file that doesn't have it.
+//     after OffAiBallSpinDirection/136) that TeamData.cs simply never
+//     exposes as a named accessor. Confirmed (by grep) this is a gap in
+//     TeamData.cs's semantic API ONLY, not in OpenSWOS's VM: PlayerActions.cs,
+//     PlayerControlled.cs, UpdatePlayers.cs and Kickoff.cs all read/write
+//     the raw `+ 138` offset directly (e.g. UpdatePlayers.cs:3620
+//     `Memory.WriteWord(tackleOppBase + 138, 12)`), so the mechanic fully
+//     works today in OpenSWOS -- just via a hardcoded offset instead of a
+//     TeamData accessor at those call sites. When those files are ported
+//     (steps 5-8), each site's local `+ 138` literal gets ported as
+//     written, matching OpenSWOS's own inconsistency rather than
+//     introducing a `swosTeamDataWonTheBallTimer()` accessor OpenSWOS
+//     itself doesn't have.
 //
 // Per-team runtime data -- mirrors swos-port `swos.topTeamData` /
 // `swos.bottomTeamData`. Full TeamGeneralInfo struct has 100+ fields; only

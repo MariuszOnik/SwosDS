@@ -1,0 +1,38 @@
+<!--
+  Standalone console harness that compiles OpenSWOS's ACTUAL, unmodified
+  SwosVm source files (referenced from ../../../openswos, never copied) and
+  runs the real Memory.Init(pcMode) to produce a byte exact "golden" dump of
+  the 0x60000 byte memory buffer. This is the strongest verification
+  available for the mechanical C port: a real run of the source being
+  ported, not another restatement of it.
+
+  These SwosVm files have no Godot dependency (confirmed 2026-09-15,
+  grepped for using Godot / GD. / Node, zero hits), so a plain console app
+  is enough; no Godot/game engine install needed.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>golden-dump</AssemblyName>
+    <!-- Keep this tool's own compiler warnings quiet, it's a throwaway
+         harness, not part of the port. -->
+    <NoWarn>CS8618;CS8500</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Real OpenSWOS source, referenced in place. -->
+    <Compile Include="../../../openswos/game/scripts/SwosVm/Memory.cs" />
+    <Compile Include="../../../openswos/game/scripts/SwosVm/Flags.cs" />
+    <Compile Include="../../../openswos/game/scripts/SwosVm/Rng.cs" />
+    <Compile Include="../../../openswos/game/scripts/SwosVm/Tables.cs" />
+    <Compile Include="../../../openswos/game/scripts/SwosVm/BallSprite.cs" />
+    <Compile Include="../../../openswos/game/scripts/SwosVm/PlayerSprite.cs" />
+    <Compile Include="../../../openswos/game/scripts/SwosVm/TeamData.cs" />
+    <Compile Include="../../../openswos/game/scripts/SwosVm/AnimationTablesData.cs" />
+  </ItemGroup>
+
+</Project>

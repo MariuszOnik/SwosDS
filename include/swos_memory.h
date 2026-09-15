@@ -1,13 +1,7 @@
 // SOURCE: openswos game/scripts/SwosVm/Memory.cs
 //   - Read*/Write* helpers (Memory.cs:2279-2313): FIDELITY VERIFIED_PC, direct port.
-//   - swosMemoryInit (Memory.cs:1477-2271, `Memory.Init`): NOT YET PORTED.
-//     Its body calls PlayerSprite.Init() / AnimationTablesData.Init() /
-//     TeamData.Init(), none of which exist in this repo yet (see README.md
-//     "Porting order" -- those are step 2, this Memory module is step 1).
-//     Porting Init() now would either be dead code or require stubbing those
-//     three calls, which would misrepresent it as complete. Call
-//     swosMemoryInitStub() for now to zero the buffer and unblock testing the
-//     Read/Write layer; replace with the real port once step 2 lands.
+//   - swosMemoryInit (Memory.cs:1477-2271, `Memory.Init`): ported in
+//     src/swos_memory_init.c (step 2.5) -- see that file's header comment.
 //
 // Mirrors swos-port's g_memByte[] global byte array -- the runtime image of
 // the original DOS .DATA segment + sprite memory pool. All translated
@@ -46,9 +40,20 @@ void swosWriteWord(int addr, uint16_t value);
 void swosWriteDword(int addr, uint32_t value);
 
 // ---- Lifecycle ----------------------------------------------------------
-// Zeroes the backing buffer only. Placeholder for the real swosMemoryInit()
-// (Memory.cs:1477 `Memory.Init`) -- see the file-level comment above.
+// Zeroes the backing buffer only -- no constants/tables populated. Kept for
+// tests that only need the Read/Write layer isolated from Init()'s full
+// contract. Prefer swosMemoryInit() (swos_memory_init.c) for anything that
+// needs realistic memory state.
 void swosMemoryInitStub(void);
+
+// The real port of Memory.Init(bool pcMode) -- see swos_memory_init.c.
+void swosMemoryInit(bool pcMode);
+
+// Internal building blocks for swosMemoryInit() -- exposed so
+// swos_memory_init.c doesn't need direct access to the static backing
+// buffer. Not generally useful on their own.
+void swosMemoryClear(void);          // zero the buffer, don't touch the flag
+void swosMemoryMarkInitialised(void);  // set IsInitialised true
 
 bool swosMemoryIsInitialised(void);
 
