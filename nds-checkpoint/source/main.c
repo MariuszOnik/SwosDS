@@ -1,14 +1,15 @@
 // ARM/BlocksDS checkpoint for the swos-vm-c mechanical port (2026-09-16,
-// after step 4: Memory/Flags/Rng/Tables, BallSprite/PlayerSprite/TeamData,
-// AnimationTablesData, SpriteUpdate, BallUpdate -- 137/137 on desktop
-// against real C#). NOT the swos-ds game: no rendering, no input. This
-// re-runs a slice of already host-verified checks (exact expected values
-// come from tests/test_*.c and tools/csharp-golden-dump's golden vectors,
-// already proven correct against real OpenSWOS C#) on the real optimizing
-// ARM toolchain (arm946e-s+nofp, -O2) to catch anything that only shows up
-// there: struct layout/alignment surprises, UB that happened to behave on
-// x86_64 but not ARM, stack depth through the goto-heavy Section4 state
-// machine, etc. See ../README.md "Status: ARM checkpoint" for the result.
+// after step 5.5: Memory/Flags/Rng/Tables, BallSprite/PlayerSprite/TeamData,
+// AnimationTablesData, SpriteUpdate, BallUpdate, PlayerActions.cs (full),
+// PlayerUpdate.cs (full) -- 213/213 on desktop against real C#). NOT the
+// swos-ds game: no rendering, no input. This re-runs a slice of already
+// host-verified checks (exact expected values come from tests/test_*.c and
+// tools/csharp-golden-dump's golden vectors, already proven correct
+// against real OpenSWOS C#) on the real optimizing ARM toolchain
+// (arm946e-s+nofp, -O2) to catch anything that only shows up there: struct
+// layout/alignment surprises, UB that happened to behave on x86_64 but not
+// ARM, stack depth through the goto-heavy Section4/RunShotAtGoal state
+// machines, etc. See ../README.md "Status: ARM checkpoint" for the result.
 #include <nds.h>
 #include <stdio.h>
 
@@ -16,7 +17,10 @@
 #include "swos_ball_sprite.h"
 #include "swos_ball_update.h"
 #include "swos_memory.h"
+#include "swos_player_actions.h"
+#include "swos_player_energy.h"
 #include "swos_player_sprite.h"
+#include "swos_player_update.h"
 #include "swos_rng.h"
 #include "swos_sprite_update.h"
 #include "swos_team_data.h"
@@ -36,7 +40,7 @@ static int g_failed = 0;
 int main(void) {
     consoleDemoInit();
     printf("swos-vm-c ARM checkpoint\n");
-    printf("arm946e-s+nofp -O2 -- step 4\n\n");
+    printf("arm946e-s+nofp -O2 -- step 5.5\n\n");
 
     // ---- Memory.Init(pcMode) golden constants (already byte-exact vs
     // ---- real C# on desktop -- test_golden_dump.c) ----
@@ -119,6 +123,72 @@ int main(void) {
     swosBallUpdateTick();
     CHECK(swosReadWord(ADDR_team1TotalGoals) == 1,
           "BallUpdate: lower-net goal bumps team1TotalGoals to 1");
+
+    // ---- PlayerActions: normal outfielder speed + delta pipeline. This is
+    // ---- the desktop golden scenario "speed_normal_outfielder" reduced to
+    // ---- its externally visible invariants. The exact state was already
+    // ---- compared byte-for-byte with the real C# before embedding these
+    // ---- expected values here. ----
+    swosMemoryInit(true);
+    swosWriteWord(ADDR_gameStatePl, 100);
+    swosPlayerSpriteSetPlayerState(1, 0);
+    swosPlayerSpriteSetX(1, 300 << 16);
+    swosPlayerSpriteSetY(1, 400 << 16);
+    swosPlayerSpriteSetDestX(1, 320);
+    swosPlayerSpriteSetDestY(1, 420);
+    swosPlayerSpriteSetDirection(1, 3);
+    swosUpdatePlayerSpeedAndFrameDelay(TEAMDATA_TOP_BASE,
+                                        swosPlayerSpriteBase(1));
+    CHECK(swosPlayerSpriteSpeed(1) == 1112,
+          "PlayerActions: normal outfielder speed golden value");
+    CHECK(swosPlayerSpriteDeltaX(1) != 0 && swosPlayerSpriteDeltaY(1) != 0,
+          "PlayerActions: speed update recomputes both movement deltas");
+
+    // ---- PlayerUpdate: keeper claim. Exercises the joined state transition,
+    // ---- camera/turn flags, ball stop, and controlled-player wiring. ----
+    swosMemoryInit(true);
+    {
+        int keeper1 = swosPlayerSpriteBase(PLSPR_SLOT_GOALIE1);
+        swosBallSpriteSetXPixels(336);
+        swosBallSpriteSetYPixels(780);
+        swosPlayerSpriteSetDirection(PLSPR_SLOT_GOALIE1, 2);
+        swosGoalkeeperClaimedTheBall(keeper1, true);
+        CHECK(swosReadWord(ADDR_gameState) == 3
+                  && swosBallSpriteSpeed() == 0
+                  && swosReadSignedWord(ADDR_cameraDirection) == 4,
+              "PlayerUpdate: top keeper claim enters hold-ball state");
+        CHECK(swosTeamDataControlledPlayer(true) == keeper1,
+              "PlayerUpdate: keeper claim wires controlled player");
+    }
+
+    // ---- PlayerUpdate's original repeated-subtraction Q16.16 division. ----
+    CHECK(swosGetFramesNeededToCoverDistance(0, 10) == 0,
+          "PlayerUpdate: zero delta needs zero frames");
+    CHECK(swosGetFramesNeededToCoverDistance(0x10000, 10) == 11
+              && swosGetFramesNeededToCoverDistance(0x8000, 10) == 22,
+          "PlayerUpdate: frame-distance division golden vectors");
+
+    // ---- RunShotAtGoal named exits: a high ball immediately leaves through
+    // ---- cseg_7FC01; a low, distant ball follows the saved-shot path. ----
+    swosMemoryInit(true);
+    {
+        int keeper1 = swosPlayerSpriteBase(PLSPR_SLOT_GOALIE1);
+        swosBallSpriteSetZPixels(20);
+        CHECK(swosRunShotAtGoal(keeper1, BALLSPR_BASE,
+                                TEAMDATA_TOP_BASE, true)
+                  == SWOS_SHOT_CHAIN_C7FC01,
+              "PlayerUpdate: RunShotAtGoal high-ball exit");
+
+        swosMemoryInit(true);
+        swosBallSpriteSetZPixels(5);
+        swosPlayerSpriteSetBallDistance(PLSPR_SLOT_GOALIE1, 9000);
+        swosBallSpriteSetYPixels(300);
+        swosPlayerSpriteSetYPixels(PLSPR_SLOT_GOALIE1, 400);
+        CHECK(swosRunShotAtGoal(keeper1, BALLSPR_BASE,
+                                TEAMDATA_TOP_BASE, true)
+                  == SWOS_SHOT_CHAIN_C7FC01,
+              "PlayerUpdate: RunShotAtGoal forced-save chain exit");
+    }
 
     printf("\nchecked %d, failed %d\n", g_checked, g_failed);
     printf(g_failed == 0 ? "\nALL CHECKS PASSED\n" : "\nSOME CHECKS FAILED\n");

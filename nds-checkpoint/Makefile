@@ -1,5 +1,5 @@
 # ARM/BlocksDS checkpoint for the swos-vm-c mechanical port (2026-09-16,
-# after step 4). Builds the SAME VM sources the desktop tests use (../src,
+# after step 5.5). Builds the SAME VM sources the desktop tests use (../src,
 # ../include -- no copies) for the real arm946e-s+nofp target and links a
 # tiny libnds console app (source/main.c) that re-runs a slice of already
 # host-verified checks. This is NOT the swos-ds game -- it exercises no

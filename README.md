@@ -571,7 +571,31 @@ only resets `Memory`, not C#-side statics like `PlayerEnergy.EffectEnabled`).
 `make test` (seven suites): **213/213** pass (26 + 44 + 2 + 40 + 25 + 31 + 45).
 
 Both player modules (`PlayerActions.cs`, `PlayerUpdate.cs`) are now fully
-joined — the ARM/BlocksDS checkpoint deferred from step 5 is next.
+joined.
+
+## Status: ARM/BlocksDS checkpoint after step 5.5 (2026-09-16)
+
+The checkpoint was rebuilt from scratch with the same port sources under
+`src/` and `include/` (no copies), using
+`arm-none-eabi-gcc -O2 -mthumb -mcpu=arm946e-s+nofp`. All 17 current C source
+files compiled and linked with **zero warnings**.
+
+The runtime slice was extended from 13 to **21 checks**. In addition to the
+step-4 coverage, it now executes the newly joined player code on ARM:
+
+- `PlayerActions.UpdatePlayerSpeedAndFrameDelay` plus delta recomputation;
+- `PlayerUpdate.GoalkeeperClaimedTheBall`, including the hold-ball state and
+  controlled-player wiring;
+- `GetFramesNeededToCoverDistance`, including its original repeated-subtraction
+  Q16.16 division;
+- two named exits through the goto-heavy `RunShotAtGoal` state machine.
+
+**Result in melonDS: 21/21, failed 0, `ALL CHECKS PASSED`.** Desktop remains
+**213/213** against the real C# golden state. The step-5.5 checkpoint image is
+131,584 bytes; the ARM9 ELF reports `.text` 62,200 bytes, `.data` 288 bytes,
+and `.bss` 397,876 bytes (total runtime image about 460 KB, still with the
+384 KB VM memory buffer dominating `.bss`). No ARM-only alignment, arithmetic,
+optimization, or stack problem was observed.
 
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
