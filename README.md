@@ -2077,3 +2077,60 @@ devkitpro_mingw64` situation); goalkeeper/referee/bench pixel extraction
 (still the same deferred, larger follow-up from Phase 3); the sprite lab's
 own visual correctness is inferred from using verified real data + a
 headless smoke run, not an actual look.
+
+### Status: Phase 4 bugfixes (2026-09-16) — first real melonDS run, two reports
+
+The user ran the built `.nds` on real melonDS and reported two things: (1)
+one goalkeeper (the one on the pitch's upper half) never renders, and (2)
+the ball's shadow is invisible while the ball rolls on the ground, when it
+should be "slightly visible" (`cień powinien być lekko widoczny`).
+
+**Ball shadow (fixed).** `fillBallCommand()` in `src/swos_render_commands.c`
+was placing the shadow at the ball's own `worldX/worldY`. `RENDER_FRAMES[1179..1183]`
+(ball + shadow) turn out to share IDENTICAL geometry (4x4px, anchor (1,3)),
+so ball and shadow landed on the exact same screen rect whenever the ball
+was near the ground, and the opaque ball (drawn second) fully covered the
+shadow -- a real occlusion bug, not a visibility/atlas bug. Ported the real
+diagonal-offset formula from `swos-port/src/game/ball/ball.cpp`'s
+`updateBallShadow()` (its own comment: "Height shifts the shadow diagonally
+to fake the original game's oblique projection"):
+`shadowX = ballX + ballZ/2 + 1`, `shadowY = ballY + ballZ/4 + 1 + BALL_SHADOW_OFFSET_Y`.
+First pass used swos-port's literal `kBallShadowZ` (-10) for the offset
+constant; the user tested that build on real hardware and reported it was
+"two ball diameters too much" (`ofset jest za duzy... dwie srednice pilki
+za duzo`). Recalibrated `BALL_SHADOW_OFFSET_Y` to `0` -- most likely a
+units/scale mismatch between swos-port's own constant and this port's
+already lockstep-verified whole-pixel `*Pixels()` accessors, not a fault in
+this project's own ball-position simulation (proven correct independently
+by Phase 1's lockstep). The formula's STRUCTURE is the real ported one;
+only this one constant was empirically corrected against a real
+measurement -- not "tuned until it looked right" from scratch. At rest this
+now nets a 1px diagonal nudge (matching "slightly visible"), growing with
+height exactly as the real formula intends. Regression check updated in
+`tests/test_render_commands.c`.
+
+**Goalkeeper (investigated, confirmed NOT a new bug).** Initial hypothesis
+was that `Kickoff.InitPlayersBeforeEnteringPitch()` might start both
+keepers on the shared outfield standing-animation table (temporarily
+resolved/visible) and that they transition into real goalkeeper-specific
+state (947+/1063+, unresolved) at different times -- which would explain an
+asymmetry. Checked against real data instead of shipping that guess:
+dumped the real C# production Memory buffer at ticks 1/50/200/1000/5000 of
+the seed-0 lockstep match (`golden-dump --lockstep-dump`) and read
+`PlayerSprite.imageIndex` directly for slot 0 (home keeper) and slot 11
+(away keeper) at each. Both slots sit in their goalkeeper ranges
+(947-1062 / 1063-1178) at EVERY sampled tick, from tick 1 onward -- the
+"shared standing table" hypothesis is false; there is no tick where either
+keeper resolves. Cross-checked `RENDER_FRAMES` for the specific indices
+seen (947, 950, 956, 963, 967, 1063, 1072, 1076, 1082): all have
+`atlasId == SWOS_RENDER_ATLAS_NONE`, exactly as Phase 3/4 already
+documented. Conclusion: **both** goalkeepers are invisible right now,
+symmetrically, 100% of the time -- this is the already-known, already-flagged
+"goalkeeper/referee/bench pixel extraction" gap from Phase 3, not a new or
+asymmetric rendering bug. The real fix is building an actual keeper texture
+atlas (extending `tools/extract_team2_atlas.py`'s technique to the
+947-1178 ordinal range) -- deferred, matches the existing backlog rather
+than adding a new item to it.
+
+`make test`: 19/19. ARM9/BlocksDS (`nds-app/`), `sdl-debug/`, and
+`sprite-lab/`: all three clean rebuilds. Separate commit.

@@ -69,6 +69,39 @@ static void resolveFrame(SwosRenderCommand *cmd) {
 // harmless at the time since ball atlas resolution wasn't implemented yet).
 #define BALL_SHADOW_GLOBAL_INDEX 1183
 
+// PHASE 4 BUGFIX (2026-09-16, reported after the first real melonDS run):
+// the shadow's real sprite geometry (RENDER_FRAMES[1179..1183]) is
+// IDENTICAL to the ball's own (4x4, anchor (1,3) -- verified against the
+// generated table) -- so placing the shadow at the ball's own worldX/worldY
+// put them at the exact same screen rect whenever the ball is near the
+// ground, and the opaque ball (drawn second) fully covered the shadow.
+// The real engine never draws them at the same spot to begin with: see
+// ../../swos-port/src/game/ball/ball.cpp:updateBallShadow -- the shadow is
+// diagonally offset from the ball, growing with height (the original's own
+// comment: "Height shifts the shadow diagonally to fake the original
+// game's oblique projection"):
+//   shadowX = ballX + ballZ/2 + 1
+//   shadowY = ballY + ballZ/4 + 1 + BALL_SHADOW_OFFSET_Y
+//
+// BALL_SHADOW_OFFSET_Y itself is NOT swos-port's literal `kBallShadowZ`
+// (-10): applied as-is, it put the shadow ~9 whole pixels above a 4x4-pixel
+// ball at rest -- confirmed too large on a real melonDS run (reported:
+// "two ball diameters too much"), most likely because swos-port's own
+// internal unit for that constant doesn't map 1:1 onto this port's already
+// lockstep-verified whole-pixel `*Pixels()` accessors (a plausible,
+// unconfirmed scale/rounding difference in how swos-port's own renderer
+// consumes it, not something this project's ball-position simulation gets
+// wrong -- that simulation is proven correct independently, see the Phase 1
+// lockstep). Recalibrated to 0 against that real measurement, which also
+// matches the ORIGINAL bug report's own wording ("cień powinien być lekko
+// widoczny" -- the shadow should be SLIGHTLY visible, not offset by a large
+// gap): at rest this nets to a 1px diagonal nudge (from the formula's own
+// "+1" terms alone), growing with height exactly as the real formula's
+// shape intends. The STRUCTURE is the real, ported formula; only this one
+// constant was empirically corrected against real hardware, not "tuned
+// until it looked right" from scratch.
+#define BALL_SHADOW_OFFSET_Y (0)
+
 static void fillBallCommand(SwosRenderCommand *cmd, SwosRenderKind kind,
                              int32_t cameraX, int32_t cameraY) {
     cmd->kind = kind;
@@ -78,9 +111,19 @@ static void fillBallCommand(SwosRenderCommand *cmd, SwosRenderKind kind,
         ? BALL_SHADOW_GLOBAL_INDEX
         : swosBallSpriteImageIndex();
     resolveFrame(cmd);
-    cmd->worldX = swosBallSpriteXPixels();
-    cmd->worldY = swosBallSpriteYPixels();
-    cmd->worldZ = (kind == SWOS_RENDER_KIND_BALL) ? swosBallSpriteZPixels() : 0;
+
+    int32_t ballX = swosBallSpriteXPixels();
+    int32_t ballY = swosBallSpriteYPixels();
+    int32_t ballZ = swosBallSpriteZPixels();
+    if (kind == SWOS_RENDER_KIND_BALL_SHADOW) {
+        cmd->worldX = ballX + ballZ / 2 + 1;
+        cmd->worldY = ballY + ballZ / 4 + 1 + BALL_SHADOW_OFFSET_Y;
+        cmd->worldZ = 0;
+    } else {
+        cmd->worldX = ballX;
+        cmd->worldY = ballY;
+        cmd->worldZ = ballZ;
+    }
     swosRenderWorldToScreen(cmd->worldX, cmd->worldY, cameraX, cameraY, &cmd->screenX, &cmd->screenY);
     cmd->sortKey = swosRenderSortKeyForWorldY(cmd->worldY);
     cmd->team = 0;

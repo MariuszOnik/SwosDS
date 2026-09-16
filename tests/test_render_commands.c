@@ -127,6 +127,18 @@ static void test_build_frame(void) {
           cmds[1].screenX == 286 && cmds[1].screenY == 389,
           "build frame: ball world/screen position matches what was seeded");
 
+    // PHASE 4 BUGFIX regression: the shadow must NOT sit at the ball's own
+    // worldX/worldY (that put them at the identical screen rect whenever
+    // the ball was near the ground, and the opaque ball -- drawn second --
+    // fully hid the shadow behind it). Formula shape from swos-port's
+    // ball.cpp:updateBallShadow: shadowX = ballX + ballZ/2 + 1,
+    // shadowY = ballY + ballZ/4 + 1 + BALL_SHADOW_OFFSET_Y (0, recalibrated
+    // against a real melonDS run -- see swos_render_commands.c's own
+    // comment on that constant). Ball here is (336, 449, z=20):
+    // shadowX = 336 + 10 + 1 = 347, shadowY = 449 + 5 + 1 + 0 = 455.
+    CHECK(cmds[0].worldX == 347 && cmds[0].worldY == 455 && cmds[0].worldZ == 0,
+          "build frame: shadow is diagonally offset from the ball (never coincident, even accounting for height), matching the real engine's own formula shape");
+
     // Find the two player commands by slot (order among players follows
     // the slot scan, 0 before 11, so this should also just be cmds[2]/cmds[3]
     // -- checked both ways for robustness against a future scan-order change).
