@@ -50,7 +50,7 @@ SOURCEDIRS	:= source ../src
 INCLUDEDIRS	:= ../include
 GFXDIRS		:= graphics
 BINDIRS		:=
-AUDIODIRS	:=
+AUDIODIRS	:= audio
 NITROFSDIR	:=
 
 DEFINES		:=
@@ -87,6 +87,22 @@ ifneq ($(GFXDIRS),)
     SOURCES_PNG	:= $(shell find -L $(GFXDIRS) -name "*.png")
     INCLUDEDIRS	+= $(addprefix $(BUILDDIR)/,$(GFXDIRS))
 endif
+ifneq ($(AUDIODIRS),)
+    # NOT `-regex '...\(...\)...'` (BlocksDS's own template, copied
+    # verbatim into swos-ds's Makefile too) -- GNU Make's own $(shell ...)
+    # argument-boundary scanner counts ALL parentheses in the raw text,
+    # including ones inside a quoted string meant for the shell, and gets
+    # confused by the escaped `\(...\)` grouping: the whole $(shell) call
+    # silently evaluates empty (no error, just zero matches) under this
+    # machine's GNU Make, even though the identical `find` command run
+    # directly in a shell works fine. Confirmed by isolating it in a
+    # throwaway Makefile before "fixing" anything -- not guessed. Avoiding
+    # raw parens entirely sidesteps the parser confusion.
+    SOURCES_AUDIO	:= $(shell find -L $(AUDIODIRS) -name "*.it" -o -name "*.mod" -o -name "*.s3m" -o -name "*.wav" -o -name "*.xm")
+    ifneq ($(SOURCES_AUDIO),)
+        INCLUDEDIRS	+= $(SOUNDBANKINFODIR)
+    endif
+endif
 
 SOURCES_S	+= $(shell find -L $(SOURCEDIRS) -name "*.s")
 SOURCES_C	+= $(shell find -L $(SOURCEDIRS) -name "*.c")
@@ -120,6 +136,13 @@ LDFLAGS		+= $(ARCH) $(LIBDIRSFLAGS) -Wl,-Map,$(MAP) $(DEFINES) \
 
 OBJS_ASSETS	:= $(addsuffix .o,$(addprefix $(BUILDDIR)/,$(SOURCES_PNG)))
 HEADERS_ASSETS	:= $(patsubst %.png,%.h,$(addprefix $(BUILDDIR)/,$(SOURCES_PNG)))
+
+ifneq ($(SOURCES_AUDIO),)
+    ifeq ($(strip $(NITROFSDIR)),)
+        OBJS_ASSETS		+= $(SOUNDBANKDIR)/soundbank.c.o
+    endif
+    HEADERS_ASSETS	+= $(SOUNDBANKINFODIR)/soundbank.h
+endif
 
 OBJS_SOURCES	:= $(addsuffix .o,$(addprefix $(BUILDDIR)/,$(SOURCES_S))) \
 		   $(addsuffix .o,$(addprefix $(BUILDDIR)/,$(SOURCES_C))) \
@@ -180,6 +203,27 @@ $(BUILDDIR)/%.png.o $(BUILDDIR)/%.h : %.png %.grit
 	$(V)$(BLOCKSDS)/tools/grit/grit $< -ftc -W1 -o$(BUILDDIR)/$*
 	$(V)$(CC) $(CFLAGS) -MMD -MP -c -o $(BUILDDIR)/$*.png.o $(BUILDDIR)/$*.c
 	$(V)touch $(BUILDDIR)/$*.png.o $(BUILDDIR)/$*.h
+
+ifneq ($(SOURCES_AUDIO),)
+
+$(SOUNDBANKINFODIR)/soundbank.h: $(SOURCES_AUDIO)
+	@echo "  MMUTIL  $^"
+	@$(MKDIR) -p $(SOUNDBANKDIR)
+	@$(MKDIR) -p $(SOUNDBANKINFODIR)
+	$(V)$(BLOCKSDS)/tools/mmutil/mmutil $^ -d \
+		-o$(SOUNDBANKDIR)/soundbank.bin -h$(SOUNDBANKINFODIR)/soundbank.h
+
+ifeq ($(strip $(NITROFSDIR)),)
+$(SOUNDBANKDIR)/soundbank.c.o: $(SOUNDBANKINFODIR)/soundbank.h
+	@echo "  BIN2C   soundbank.bin"
+	$(V)$(BLOCKSDS)/tools/bin2c/bin2c $(SOUNDBANKDIR)/soundbank.bin \
+		$(SOUNDBANKDIR)
+	@echo "  CC.9    soundbank_bin.c"
+	$(V)$(CC) $(CFLAGS) -MMD -MP -c -o $(SOUNDBANKDIR)/soundbank.c.o \
+		$(SOUNDBANKDIR)/soundbank_bin.c
+endif
+
+endif
 
 # All assets must be built before the source code
 $(SOURCES_S) $(SOURCES_C) $(SOURCES_CPP): $(HEADERS_ASSETS)

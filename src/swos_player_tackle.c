@@ -19,6 +19,7 @@
 #include <stdint.h>
 
 #include "swos_addr.h"
+#include "swos_audio_events.h"
 #include "swos_ball_sprite.h"
 #include "swos_ball_update.h"
 #include "swos_memory.h"
@@ -413,7 +414,9 @@ static void testFoulForPenaltyAndFreeKick(int aBallOrFouledSprite, int aTeamData
     // 13406-13417 -- cmp gameStatePl, 101 ; jz @@out.
     if ((int16_t)swosReadWord(ADDR_gameStatePl) == 101) return;
 
-    // StubPlayFoulWhistleSample() omitted (audio).
+    // StubPlayFoulWhistleSample() now wired to a real sound (see
+    // swos_audio_events.h).
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_FOUL_WHISTLE);
 
     // 13420-13424 -- D1 = foul.x +2, D2 = foul.y +2.
     esi = A2;
@@ -1269,6 +1272,8 @@ l_halve_player_speed:;
     }
 
 l_out:;
-    // 15240-15241 -- PlayKickSample (omitted, audio); resetBothTeamSpinTimers.
+    // 15240-15241 -- PlayKickSample now wired to a real sound (see
+    // swos_audio_events.h); resetBothTeamSpinTimers.
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_KICK);
     swosResetBothTeamSpinTimers();
 }

@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "swos_addr.h"
+#include "swos_audio_events.h"
 #include "swos_ball_sprite.h"
 #include "swos_game_loop.h"
 #include "swos_memory.h"
@@ -142,7 +143,9 @@ void swosGameTimeUpdateGameTime(void)
 
                 swosWriteDword(ADDR_gt_gameSeconds, 0);
                 swosWriteWord(ADDR_stateGoal, 0);
-                // StubPlayEndGameWhistleSample omitted -- audio, see header.
+                // StubPlayEndGameWhistleSample now wired to a real sound
+                // (see swos_audio_events.h).
+                swosAudioFireEvent(SWOS_AUDIO_EVENT_END_GAME_WHISTLE);
                 s_stoppageRealTicks = 0;
                 callPeriodEndHandlerIfAny();
             }

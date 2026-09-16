@@ -19,12 +19,14 @@
 // (matches the C#'s own stub framing, same standard as every other MatchAudio
 // omission in this port): StubHandleKeys (truly a no-op, zero effect even in
 // the C# -- input pumping is host-owned); the fadeOut/drawPitchAtCurrentCamera
-// calls inside GameOver; MatchAudio.PlayEndGameCrowd/PlayWhistle/Tick/
-// LoadCrowdChant. Where a "stub" function ALSO has a real Memory
-// side-effect (StubLoadCrowdChantSampleIfNeeded's one-shot flag clear,
+// calls inside GameOver; MatchAudio.PlayEndGameCrowd/Tick/LoadCrowdChant.
+// Where a "stub" function ALSO has a real Memory side-effect
+// (StubLoadCrowdChantSampleIfNeeded's one-shot flag clear,
 // StubHandlePauseAndStats' statsEnqueued clear, PlayEnqueuedSamples'
 // goalCounter decrement), that side-effect IS ported -- only the audio/
-// render half is omitted.
+// render half is omitted. MatchAudio.PlayWhistle (StubPlayRefereeWhistleSample,
+// mode8's breakCameraMode==8 branch) is the one exception: now wired to a
+// real sound via swosAudioFireEvent(SWOS_AUDIO_EVENT_RESTART_WHISTLE).
 #pragma once
 
 #include <stdbool.h>

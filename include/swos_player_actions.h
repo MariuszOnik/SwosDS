@@ -17,12 +17,15 @@
 //     call site (RecordShot, from PlayerKickingBall) is simply omitted.
 //   - `FaithfulBallControl` is consumed by PlayerControlled.cs and therefore
 //     lands with step 6A in swos_player_controlled.{h,c}.
-//   - MatchAudio.* calls (PlayKickSample/PlayGoodTackleComment/
-//     PlayHeaderComment/CancelGoodPass/EnqueueGoodPass) -- host-side audio,
-//     zero Memory effect, omitted at each call site with a comment. Where a
-//     function mixes audio with real Memory writes (StopGoodPassSample,
+//   - MatchAudio.* calls (PlayGoodTackleComment/PlayHeaderComment/
+//     CancelGoodPass/EnqueueGoodPass) -- host-side audio (commentary), zero
+//     Memory effect, remain omitted at each call site. Where a function
+//     mixes audio with real Memory writes (StopGoodPassSample,
 //     EnqueuePlayingGoodPassSample), only the audio call is omitted -- the
-//     Memory-affecting logic is ported in full.
+//     Memory-affecting logic is ported in full. PlayKickSample -- this
+//     file's own 6 real call sites -- is the one exception: now wired to a
+//     real sound via swosAudioFireEvent(SWOS_AUDIO_EVENT_KICK), see
+//     swos_audio_events.h.
 // PlayerControlled's duel counters, deferred during step 5, are wired to the
 // real step-6A telemetry structure by swos_player_actions.c.
 //

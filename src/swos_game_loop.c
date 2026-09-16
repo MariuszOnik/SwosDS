@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "swos_addr.h"
+#include "swos_audio_events.h"
 #include "swos_ball_sprite.h"
 #include "swos_ball_update.h"
 #include "swos_bench.h"
@@ -739,8 +740,9 @@ static void mode8(int16_t gameState)
 {
     swosWriteWord(ADDR_writeOnlyVar03, 0);
 
-    // StubPlayRefereeWhistleSample() omitted -- audio, see header.
-    (void)gameState;
+    // StubPlayRefereeWhistleSample() now wired to a real sound (see
+    // swos_audio_events.h).
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_RESTART_WHISTLE);
 
     // cseg_73F2C.
     swosWriteWord(ADDR_goalCameraMode, 0);

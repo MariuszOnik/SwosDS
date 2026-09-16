@@ -20,6 +20,10 @@
 // no effect on the simulated VM, in the same category as the renderer
 // itself; omitting them is not "faking" anything because there is no
 // simulation logic in them to fake. See README.md for the full list.
+// PlayBounce specifically is now wired to a real sound via
+// swosAudioFireEvent(SWOS_AUDIO_EVENT_BALL_BOUNCE) at its exact gate
+// (swos_ball_update.c) -- PostHitComment/BarHitComment/PlayMissGoalSample
+// remain genuinely omitted (commentary, not this pass's scope).
 #pragma once
 
 #include <stdbool.h>

@@ -28,7 +28,11 @@
 #include <stdint.h>
 
 #include <gl2d.h>
+#include <maxmod9.h>
 #include <nds.h>
+
+#include "soundbank.h"
+#include "soundbank_bin.h"
 
 #include "match_bootstrap.h"
 
@@ -48,6 +52,7 @@
 #include "pitch_map.h"
 #include "pitch_tiles_texture.h"
 
+#include "swos_audio_events.h"
 #include "swos_ball_sprite.h"
 #include "swos_game_loop.h"
 #include "swos_memory.h"
@@ -138,6 +143,24 @@ static void drawResolvedCommand(const SwosRenderCommand *cmd)
     glSprite(drawX, drawY, GL_FLIP_NONE, &sheet[cmd->atlasFrame]);
 }
 
+// The ONE place a SwosAudioEvent (swos_audio_events.h) turns into a real
+// mmEffect() call -- registered as g_swosAudioEventHook below. Each event
+// fires from the exact real MatchAudio.* call site the C# port omitted
+// (see that header's own per-event comment); this function only decides
+// WHICH sound plays, never WHEN.
+static void playAudioEvent(SwosAudioEvent event)
+{
+    switch (event)
+    {
+        case SWOS_AUDIO_EVENT_BALL_BOUNCE:     mmEffect(SFX_BOUNCE); break;
+        case SWOS_AUDIO_EVENT_GOAL:            mmEffect(SFX_GOAL); break;
+        case SWOS_AUDIO_EVENT_FOUL_WHISTLE:    mmEffect(SFX_FOUL); break;
+        case SWOS_AUDIO_EVENT_RESTART_WHISTLE: mmEffect(SFX_WHISTLE); break;
+        case SWOS_AUDIO_EVENT_END_GAME_WHISTLE: mmEffect(SFX_ENDGAME); break;
+        case SWOS_AUDIO_EVENT_KICK:             mmEffect(SFX_KICK); break;
+    }
+}
+
 int main(int argc, char **argv)
 {
     consoleDemoInit();
@@ -146,6 +169,20 @@ int main(int argc, char **argv)
     vramSetBankA(VRAM_A_TEXTURE);
     vramSetBankB(VRAM_B_TEXTURE);
     vramSetBankE(VRAM_E_TEX_PALETTE);
+
+    // Real match sound effects -- see swos_audio_events.h/tools/
+    // extract_sound_effects.py. mmLoadEffect() preloads each one-shot SFX
+    // so the first mmEffect() call for it doesn't stall on disk/NitroFS
+    // access (matches the reference BlocksDS maxmod example's own pattern).
+    soundEnable();
+    mmInitDefaultMem((mm_addr)soundbank_bin);
+    mmLoadEffect(SFX_BOUNCE);
+    mmLoadEffect(SFX_GOAL);
+    mmLoadEffect(SFX_FOUL);
+    mmLoadEffect(SFX_WHISTLE);
+    mmLoadEffect(SFX_ENDGAME);
+    mmLoadEffect(SFX_KICK);
+    swosAudioSetEventHook(playAudioEvent);
 
     glLoadSpriteSet(playerSprites, PLAYER_NUM_IMAGES, PLAYER_texcoords,
                      GL_RGB256, 256, 256,

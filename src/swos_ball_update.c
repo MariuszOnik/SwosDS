@@ -8,6 +8,7 @@
 // PlayerUpdate.cs/BallOutOfPlay.cs forward-pulled dependency notes.
 #include "swos_ball_update.h"
 #include "swos_addr.h"
+#include "swos_audio_events.h"
 #include "swos_ball_out_of_play.h"
 #include "swos_ball_sprite.h"
 #include "swos_flags.h"
@@ -162,10 +163,12 @@ static void section3ApplyDeltasAndBounce(void) {
             dz |= 1;
 
             // ball.cpp:537-547 -- bounce audio gate. MatchAudio.PlayBounce()
-            // omitted (see swos_ball_update.h) -- the ONLY state effect of
-            // this branch either way is dz, already computed above.
+            // now wired to a real sound (swosAudioFireEvent, see
+            // swos_audio_events.h) -- the ONLY state effect of this branch
+            // either way is dz, already computed above.
             if (dz <= 40960) {
                 dz = 0;
+                swosAudioFireEvent(SWOS_AUDIO_EVENT_BALL_BOUNCE);
             }
         }
     }

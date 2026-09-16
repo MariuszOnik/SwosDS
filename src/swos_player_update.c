@@ -4,6 +4,7 @@
 // FIDELITY: VERIFIED_PC -- direct mechanical port, no logic changes.
 #include "swos_player_update.h"
 #include "swos_addr.h"
+#include "swos_audio_events.h"
 #include "swos_ball_sprite.h"
 #include "swos_ball_update.h"
 #include "swos_memory.h"
@@ -621,7 +622,8 @@ l_set_ball_speed:;
 
     swosResetBothTeamSpinTimers();
 
-    // PlayKickSample() omitted (audio).
+    // PlayKickSample() now wired to a real sound (see swos_audio_events.h).
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_KICK);
 }
 
 

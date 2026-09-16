@@ -6,6 +6,7 @@
 #include "swos_player_actions.h"
 #include "swos_player_controlled.h"
 #include "swos_addr.h"
+#include "swos_audio_events.h"
 #include "swos_ball_sprite.h"
 #include "swos_ball_update.h"
 #include "swos_memory.h"
@@ -534,8 +535,10 @@ cseg_7AE0E:;
     }
 
 l_play_kick_sample_and_leave:;
-    // player.cpp:1133-1135 -- team.passInProgress = 0; PlayKickSample (omitted, audio).
+    // player.cpp:1133-1135 -- team.passInProgress = 0; PlayKickSample now
+    // wired to a real sound (see swos_audio_events.h).
     swosWriteWord(teamBase + TEAMDATA_OFF_PASS_IN_PROGRESS, 0);
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_KICK);
 }
 
 
@@ -630,9 +633,10 @@ l_set_static_header_anim_table:;
     curDz = swosAsr32(curDz, 1);
     swosBallSpriteSetDeltaZ(curDz);
 
-    // player.cpp:1385-1387 -- player.heading = 1; PlayKickSample (omitted,
-    // audio); resetBothTeamSpinTimers.
+    // player.cpp:1385-1387 -- player.heading = 1; PlayKickSample now wired
+    // to a real sound (see swos_audio_events.h); resetBothTeamSpinTimers.
     swosWriteWord(playerAddr + 98 /* heading */, 1);
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_KICK);
     swosResetBothTeamSpinTimers();
     }
 }
@@ -758,8 +762,10 @@ l_update_player_direction:;
     swosWriteWord(playerAddr + PLSPR_OFF_SPEED, (uint16_t)((uint16_t)ps >> 1));
     swosWriteWord(playerAddr + 98 /* heading */, 1);
 
-    // player.cpp:1668-1670 -- PlayKickSample; playHeaderComment (both omitted,
-    // audio); ResetSpinTimers.
+    // player.cpp:1668-1670 -- PlayKickSample now wired to a real sound
+    // (see swos_audio_events.h); playHeaderComment (still omitted,
+    // commentary); ResetSpinTimers.
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_KICK);
     swosResetBothTeamSpinTimers();
     }
 }
@@ -869,7 +875,8 @@ l_halve_player_speed:;
     }
 
 l_out_strong:;
-    // PlayKickSample() omitted (audio).
+    // PlayKickSample() now wired to a real sound (see swos_audio_events.h).
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_KICK);
     swosResetBothTeamSpinTimers();
 }
 
@@ -964,7 +971,8 @@ l_set_new_ball_direction_and_speed:;
     }
 
 l_out_weak:;
-    // PlayKickSample() omitted (audio).
+    // PlayKickSample() now wired to a real sound (see swos_audio_events.h).
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_KICK);
     swosResetBothTeamSpinTimers();
 }
 
@@ -1164,7 +1172,9 @@ l_player_passing:;
     }
 
 l_play_kick_and_pass_samples:;
-    // player.cpp:3121-3122 -- PlayKickSample (omitted, audio); PlayStopGoodPassSampleIfNeeded.
+    // player.cpp:3121-3122 -- PlayKickSample now wired to a real sound
+    // (see swos_audio_events.h); PlayStopGoodPassSampleIfNeeded.
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_KICK);
     swosPlayStopGoodPassSampleIfNeeded();
 }
 

@@ -2432,3 +2432,102 @@ Visual confirmation on melonDS/hardware is still the user's own next step
 bench players still have no texture, and worldY-based draw sorting's
 "real foot-point" refinement (plain worldY today) was never claimed to be
 more than a placeholder.
+
+### Status: real match sound effects (2026-09-16)
+
+User asked whether/how sound was feasible on DS. Investigated before
+writing anything: BlocksDS's maxmod audio pipeline was already fully
+wired into `nds-app/Makefile` (ARM7 core, `-lmm9`, soundbank build rules)
+but `AUDIODIRS :=` was empty and nothing called `mmEffect()` anywhere.
+Separately, the C# port's own header comments across six different files
+(`swos_ball_update.h`, `swos_game_loop.h`, `swos_game_time.h`,
+`swos_player_actions.h`, `swos_player_update.h`, `swos_referee.h`)
+already documented exactly which real `MatchAudio.*` calls the original
+C++/C# made and were deliberately omitted (zero Memory effect, confirmed
+by reading each site) -- a ready-made, precisely cited list of every real
+trigger point, not something to guess at.
+
+**Real assets.** The user's own legally-owned GOG install has the
+original `.RAW` PCM files (`SFX/FX/*.RAW`) -- verified byte-for-byte
+against `swos-port/docs/SWOS/sound.txt`'s own file table before writing
+anything (e.g. `kickx.raw`=2105, `homegoal.raw`=194187). Format confirmed
+from `swos-port/src/audio/SoundSample.cpp`/`wavFormat.h`: 8-bit unsigned
+mono PCM, 22050Hz (11025Hz only for `foul.raw`/`endgamew.raw`, per
+`SoundSample::is11KhzSample()`'s own check). New
+`tools/extract_sound_effects.py` prepends the same trivial WAV header
+swos-port itself builds at runtime and writes `nds-app/audio/*.wav`.
+
+**Six real events, six real call sites (well, thirteen -- kick has 8).**
+New `include/swos_audio_events.h`/`src/swos_audio_events.c`: a portable
+`SwosAudioEvent` enum + a hook (`g_swosAudioEventHook`, set by
+`swosAudioSetEventHook`) that `swosAudioFireEvent()` calls if set --
+genuinely optional (unlike the assert-backed `g_swosAiSetControlsDirectionHook`/
+`g_swosAiKickHook` pattern from step 9: desktop `make test` has no audio
+subsystem and must keep working with the hook unset). Wired at the exact
+real sites the C# comments already named:
+  - **Bounce** -- `swos_ball_update.c`'s `dz<=40960` gate (ball.cpp:537-547).
+  - **Goal** -- `swos_result.c`'s `swosResultRegisterScorer` (the one real
+    place a goal is registered, own goals included).
+  - **Foul whistle** -- `swos_player_tackle.c`'s `testFoulForPenaltyAndFreeKick`
+    (`StubPlayFoulWhistleSample`).
+  - **Restart whistle** -- `swos_game_loop.c`'s `mode8`
+    (`StubPlayRefereeWhistleSample`).
+  - **End-game whistle** -- `swos_game_time.c`'s period-end handler
+    (`StubPlayEndGameWhistleSample`).
+  - **Kick** -- all 8 real `PlayKickSample()` sites across
+    `swos_player_actions.c` (6), `swos_player_update.c` (1),
+    `swos_player_tackle.c` (1) -- initially deferred as a separate,
+    larger follow-up, then wired in the same session after the user asked
+    specifically "where's the kick sound?".
+
+Each corrected header comment now says which call is wired vs. still
+genuinely omitted (commentary/telemetry, out of scope) -- the "omitted"
+documentation stays accurate rather than going stale.
+
+**A real Makefile bug found and fixed, not worked around.** Setting
+`AUDIODIRS := audio` alone produced `soundbank.h: No such file or
+directory` -- `nds-app/Makefile` had only ever declared the `AUDIODIRS`/
+`SOUNDBANKINFODIR` variables (copied from the BlocksDS template) but never
+actually included the `ifneq ($(AUDIODIRS),)` detection block or the
+`mmutil`/`bin2c` soundbank build rules themselves -- copied the working
+versions over from `../../swos-ds/Makefile` (which has them, just also
+never exercised with `AUDIODIRS` non-empty). Once that was fixed, a
+SECOND real bug surfaced: BlocksDS's own template `-regex
+'.*\.\(it\|mod\|s3m\|wav\|xm\)'` silently evaluates to nothing under this
+machine's GNU Make -- confirmed by isolating it in a throwaway Makefile
+(not guessed): `$(shell ...)`'s own argument-boundary scanner gets
+confused by the escaped `\(...\)` grouping and the call evaluates empty
+with no error. Replaced with an equivalent paren-free `-name "*.wav" -o
+-name "*.xm" ...` form, which works. (swos-ds's own copy of this same
+template has the identical latent bug, still unexercised there since its
+own `AUDIODIRS` stays empty -- not touched, out of scope.)
+
+**Kick sound gotcha (caught by the compiler, not missed silently):**
+after wiring the other five, `-Wswitch` immediately flagged
+`SWOS_AUDIO_EVENT_KICK` as unhandled in `nds-app/main.c`'s dispatch
+`switch` the moment the enum value was added -- a real, load-bearing
+warning that caught an incomplete wiring pass before it shipped silent,
+not a hypothetical.
+
+**Why a bounce doesn't always make a sound (real, not a bug):** the user
+observed 3 visible ball bounces produce only 1 sound. The `dz<=40960`
+gate and `dz=0` (killing the bounce) are the SAME `if` in the original
+`ball.cpp` -- sound plays exactly when the rebound is weak enough to make
+the ball stop, i.e. the final settling bounce of a sequence, not every
+visible bounce. Faithfully ported (this code is part of the
+lockstep-verified ball physics, `FIDELITY: VERIFIED_PC`), not a new
+divergence.
+
+`make test`: 20/20 (new `test_audio_events` binary: hook-mechanism unit
+tests + a real integration check that `swosResultRegisterScorer` fires
+`SWOS_AUDIO_EVENT_GOAL` exactly once; all pre-existing byte-exact golden
+tests unaffected, confirming the 13 new `swosAudioFireEvent()` call sites
+are genuinely side-effect-free on Memory). ARM9/BlocksDS (`nds-app/`):
+clean rebuild, zero warnings, real soundbank embedded (`.nds` grew from
+~475KB to ~721KB). `sdl-debug/`: clean rebuild (its glob-based source list
+picks up `swos_audio_events.c` automatically). `sprite-lab/`: unaffected
+(doesn't touch VM/gameplay code at all). Not done: commentary/chants
+(hundreds of files, a much bigger random-pick system, genuinely separate
+scope) and crowd noise/chants remain omitted, as originally scoped.
+Actual audible confirmation on melonDS/hardware is still the user's own
+next step.

@@ -17,8 +17,10 @@
 //     to Memory. Their three call sites (two in GoalkeeperJumping, one in
 //     ShouldGoalkeeperDive) are simply omitted, exactly like PlayerActions.cs's
 //     shot-counter telemetry in step 5.
-//   - MatchAudio.KeeperClaimedComment()/PlayKick() -- host-side audio, zero
-//     Memory effect, omitted at each call site with a comment.
+//   - MatchAudio.KeeperClaimedComment() -- host-side audio (commentary),
+//     zero Memory effect, remains omitted. PlayKick() at this file's own
+//     call site is now wired to a real sound via swosAudioFireEvent
+//     (SWOS_AUDIO_EVENT_KICK, see swos_audio_events.h).
 //   - The `Godot.GD.Print("[PORT-SAFETY] ...")` debug line in
 //     TickGoalkeeperHoldAutoRelease -- a log statement, zero Memory effect,
 //     omitted.

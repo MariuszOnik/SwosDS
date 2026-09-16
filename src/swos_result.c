@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "swos_addr.h"
+#include "swos_audio_events.h"
 #include "swos_game_time.h"
 #include "swos_memory.h"
 #include "swos_player_sprite.h"
@@ -144,6 +145,11 @@ void swosResultRegisterScorer(int scorerSpriteAddr, int teamNum, int goalType)
     int32_t topTeamPtr    = swosReadSignedDword(ADDR_topTeamInGame);
     int32_t bottomTeamPtr = swosReadSignedDword(ADDR_bottomTeamInGame);
     if (topTeamPtr == 0 || bottomTeamPtr == 0) return;
+
+    // Real event: this function runs exactly once per actual goal (own
+    // goals included), see swos_update_goals.c's swosRegisterScorerHook
+    // call site -- the single real place "a goal was scored" is known.
+    swosAudioFireEvent(SWOS_AUDIO_EVENT_GOAL);
 
     SwosResultScorerInfo *scorers;
     int32_t scoringTeamPtr, concedingTeamPtr;

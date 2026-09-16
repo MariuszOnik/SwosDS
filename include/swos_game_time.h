@@ -23,8 +23,9 @@
 //
 // OMITTED (documented, not stubbed, zero Memory/control-flow effect --
 // confirmed by reading each one, same standard as every prior step):
-//   - MatchAudio.PlayEndGameWhistle (StubPlayEndGameWhistleSample) -- pure
-//     audio playback.
+//   - MatchAudio.PlayEndGameWhistle (StubPlayEndGameWhistleSample) -- now
+//     wired to a real sound via swosAudioFireEvent(SWOS_AUDIO_EVENT_
+//     END_GAME_WHISTLE) at its exact site (swos_game_time.c).
 //   - HalftimeCeremonyStage / SetHalftimeCeremonyStage / s_halftimeCeremonyStage
 //     / kHalftimeStageDwellTicks -- the C#'s own comment claims these are
 //     "kept for Main.cs compile compatibility", but a whole-tree grep shows
