@@ -71,6 +71,13 @@ REFEREE addendum (2026-09-16): tools/extract_referee_atlas.py built an
 1273-1283, also inside BENCH.DAT's catch-all range) -- the referee's own
 simulation (swos_referee.c) and position/animation accessors already
 existed; only the pixel texture and the RenderCommand wiring were missing.
+
+CORNER FLAGS addendum (2026-09-16): tools/extract_cornerflag_atlas.py built
+a 4-frame texture for the corner flags' real wind-animation frames (global
+1184-1187, also inside BENCH.DAT's catch-all range) -- same shape as the
+referee gap: swos_game_sprites.c's swosGameSpritesUpdateCornerFlags()
+already computed real fixed position + animation every tick, only the
+pixel texture and RenderCommand wiring were missing.
 """
 import re
 import struct
@@ -104,6 +111,7 @@ ATLAS_PLAYER_TEAM2 = 2 # nds-app/graphics/player_atlas_team2_texture.png (Phase 
 ATLAS_KEEPER = 3       # nds-app/graphics/keeper_atlas_texture.png (Phase 5), 116 frames, global 947-1062 (team1) / 1063-1178 (team2, same physical sprites)
 ATLAS_GOAL = 4          # nds-app/graphics/goal_atlas_texture.png (Phase 5 bugfix, "Goal Post Split"), 2 frames, global 1205 (top) / 1206 (bottom)
 ATLAS_REFEREE = 5       # nds-app/graphics/referee_atlas_texture.png, 11 frames, global 1273-1283
+ATLAS_CORNERFLAG = 6    # nds-app/graphics/cornerflag_atlas_texture.png, 4 frames, global 1184-1187
 
 
 def parse_dat(path, start_ordinal, expect_count=None):
@@ -239,6 +247,8 @@ def atlas_for(ordinal):
         return ATLAS_GOAL, 1  # bottom goal frame (kBottomGoalSprite)
     if 1273 <= ordinal <= 1283:
         return ATLAS_REFEREE, ordinal - 1273
+    if 1184 <= ordinal <= 1187:
+        return ATLAS_CORNERFLAG, ordinal - 1184
     return ATLAS_NONE, -1
 
 

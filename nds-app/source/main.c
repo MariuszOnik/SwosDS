@@ -41,6 +41,8 @@
 #include "goal_atlas_texture.h"
 #include "referee_atlas.h"
 #include "referee_atlas_texture.h"
+#include "cornerflag_atlas.h"
+#include "cornerflag_atlas_texture.h"
 #include "ball_atlas.h"
 #include "ball_atlas_texture.h"
 #include "pitch_map.h"
@@ -75,6 +77,7 @@ static glImage playerSpritesTeam2[PLAYER_NUM_IMAGES];  // away team (global 644-
 static glImage keeperSprites[KEEPER_NUM_IMAGES];        // both goalkeepers (global 947-1062 / 1063-1178, Phase 5)
 static glImage goalSprites[GOAL_NUM_IMAGES];             // top/bottom goal-frame overlay (global 1205/1206, "Goal Post Split")
 static glImage refereeSprites[REFEREE_NUM_IMAGES];       // referee (global 1273-1283), only drawn when active
+static glImage cornerFlagSprites[CORNERFLAG_NUM_IMAGES]; // 4 corner flags (global 1184-1187)
 static glImage ballSprites[BALL_NUM_IMAGES];
 static glImage pitchTiles[256];
 
@@ -124,6 +127,7 @@ static void drawResolvedCommand(const SwosRenderCommand *cmd)
         case SWOS_RENDER_ATLAS_KEEPER:       sheet = keeperSprites; break;
         case SWOS_RENDER_ATLAS_GOAL:         sheet = goalSprites; break;
         case SWOS_RENDER_ATLAS_REFEREE:      sheet = refereeSprites; break;
+        case SWOS_RENDER_ATLAS_CORNERFLAG:   sheet = cornerFlagSprites; break;
         case SWOS_RENDER_ATLAS_BALL:         sheet = ballSprites; break;
         default: return; // SWOS_RENDER_ATLAS_NONE -- imageResolved is already false for this, caller filters it out
     }
@@ -163,6 +167,10 @@ int main(int argc, char **argv)
                      GL_RGB256, 128, 32,
                      TEXGEN_TEXCOORD | GL_TEXTURE_COLOR0_TRANSPARENT, 256,
                      referee_atlas_texturePal, referee_atlas_textureBitmap);
+    glLoadSpriteSet(cornerFlagSprites, CORNERFLAG_NUM_IMAGES, CORNERFLAG_texcoords,
+                     GL_RGB256, 64, 32,
+                     TEXGEN_TEXCOORD | GL_TEXTURE_COLOR0_TRANSPARENT, 256,
+                     cornerflag_atlas_texturePal, cornerflag_atlas_textureBitmap);
     glLoadSpriteSet(ballSprites, BALL_NUM_IMAGES, BALL_texcoords,
                      GL_RGB256, 32, 32,
                      TEXGEN_TEXCOORD | GL_TEXTURE_COLOR0_TRANSPARENT, 256,

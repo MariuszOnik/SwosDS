@@ -4,6 +4,7 @@
 #include "swos_render_commands.h"
 
 #include "swos_ball_sprite.h"
+#include "swos_game_sprites.h"
 #include "swos_player_sprite.h"
 #include "swos_referee.h"
 #include "swos_render_frames.h"
@@ -210,6 +211,30 @@ static void fillRefereeCommand(SwosRenderCommand *cmd, int32_t cameraX, int32_t 
     cmd->palette = 0;
 }
 
+// Corner flags: real per-tick position + wind-animation frame, already
+// ported (swos_game_sprites.c, VERIFIED_PC) and already ticked every frame
+// by swosGameLoopTick() -> swosGameSpritesUpdateCornerFlags(). Always
+// visible (unlike the referee) -- all 4 exist for the whole match, no gate
+// needed.
+static void fillCornerFlagCommand(SwosRenderCommand *cmd, int index,
+                                   int32_t cameraX, int32_t cameraY) {
+    int x, y, imageIndex;
+    swosGameSpritesGetCornerFlag(index, &x, &y, &imageIndex);
+
+    cmd->kind = SWOS_RENDER_KIND_CORNER_FLAG;
+    cmd->layer = SWOS_RENDER_LAYER_SPRITE;
+    cmd->slot = index;
+    cmd->globalImageIndex = imageIndex;
+    resolveFrame(cmd);
+    cmd->worldX = x;
+    cmd->worldY = y;
+    cmd->worldZ = 0;
+    swosRenderWorldToScreen(cmd->worldX, cmd->worldY, cameraX, cameraY, &cmd->screenX, &cmd->screenY);
+    cmd->sortKey = swosRenderSortKeyForWorldY(cmd->worldY);
+    cmd->team = 0;
+    cmd->palette = 0;
+}
+
 static void fillPlayerCommand(SwosRenderCommand *cmd, int slot,
                                int32_t cameraX, int32_t cameraY) {
     cmd->kind = SWOS_RENDER_KIND_PLAYER;
@@ -259,6 +284,13 @@ int swosRenderBuildFrame(SwosRenderCommand *outCommands, int maxCommands,
 
     if (count < maxCommands && swosRefereeVisible()) {
         fillRefereeCommand(&outCommands[count], cameraX, cameraY);
+        count++;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        if (count >= maxCommands)
+            break;
+        fillCornerFlagCommand(&outCommands[count], i, cameraX, cameraY);
         count++;
     }
 

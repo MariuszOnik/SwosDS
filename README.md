@@ -2386,3 +2386,49 @@ BlocksDS (`nds-app/`): clean rebuild, zero warnings. `sdl-debug/` and
 no crash. Visual confirmation on melonDS/hardware (including actually
 triggering a card in a real match to see the referee walk in) still the
 user's own next step.
+
+### Status: Phase 5 follow-up (2026-09-16) — corner flags now actually draw
+
+Same request as the referee, same real shape underneath: the user asked to
+wire the 4 corner flags into the render loop, correctly noting
+`swos_game_sprites.c`'s `swosGameSpritesUpdateCornerFlags()`
+(`VERIFIED_PC`) already computes real fixed position + wind-animation
+frame every tick and `swosGameSpritesGetCornerFlag()` already exposes it.
+Checking first (same discipline as the referee and goalkeeper gaps before
+it) found the same missing piece: the flags' 4 real frames (global
+1184-1187, inside `BENCH.DAT`'s catch-all range) never had a pixel texture
+-- `SWOS_RENDER_ATLAS_NONE`.
+
+New `tools/extract_cornerflag_atlas.py` packs the 4 real frames
+(`BENCH.DAT` local index 5-8) into a 64x32 atlas (2KB). `SwosRenderCommand`
+gained `SWOS_RENDER_KIND_CORNER_FLAG`; the new `fillCornerFlagCommand()`
+in `swos_render_commands.c` is unconditional (unlike the referee) -- all 4
+flags exist for the whole match, no visibility gate needed, `slot` carries
+the flag index 0-3. `SWOS_RENDER_MAX_COMMANDS` bumped 27 -> 31. Wired into
+`nds-app/main.c` and `sprite-lab/` like every other atlas.
+
+One real test gotcha, worth remembering: a fresh `swosMemoryInit()` alone
+leaves `ADDR_cornerFlags` zeroed, NOT at the real fixed positions --
+`swosGameSpritesUpdateCornerFlags()` only actually runs once per real game
+loop tick (`swos_game_loop.c`), so `test_render_commands.c`'s
+`test_build_frame`/`test_build_frame_referee_visible` needed an explicit
+call to it after `swosMemoryInit()` to see the same state
+`swosRenderBuildFrame()` sees in the real app (caught by a first failing
+run -- all 4 corner-flag positions/atlas checks failed until this was
+added, not silently passed).
+
+`make test`: 19/19, including new checks that all 4 corner flags sit at
+their real fixed pitch-corner positions (`GS_LEFT/RIGHT_CORNER_FLAG_X`,
+`GS_TOP/BOTTOM_CORNER_FLAG_Y`) and resolve to the real atlas, plus new spot
+checks in `test_render_frames.c` for the ordinal range. ARM9/BlocksDS
+(`nds-app/`): clean rebuild, zero warnings. `sdl-debug/` and `sprite-lab/`:
+clean rebuilds, `sprite-lab`'s headless smoke run confirmed no crash.
+
+With this, every simulated on-pitch object the plan originally called out
+(ball, shadow, both goalkeepers, both goal frames, referee, corner flags,
+all 22 players) has a real texture and is wired into the render loop.
+Visual confirmation on melonDS/hardware is still the user's own next step
+-- and the two items the backlog has flagged since Phase 3/4 remain open:
+bench players still have no texture, and worldY-based draw sorting's
+"real foot-point" refinement (plain worldY today) was never claimed to be
+more than a placeholder.

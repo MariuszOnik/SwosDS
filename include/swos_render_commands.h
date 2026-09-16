@@ -10,7 +10,8 @@
 //
 // Purpose: read a VM Memory snapshot and produce an ordered list of
 // RenderCommand values -- ball, shadow, the two static goal frames, the
-// referee (when active), all 22 players -- so that EVERY
+// referee (when active), the four corner flags, all 22 players -- so that
+// EVERY
 // renderer (nds-app's GL2D loop, a future SDL frontend, the "sprite
 // laboratory" Phase 4 adds) consumes the exact same decisions instead of
 // each platform separately picking its own animation frame or draw order.
@@ -62,6 +63,7 @@ typedef enum {
     SWOS_RENDER_KIND_PLAYER = 2,
     SWOS_RENDER_KIND_GOAL = 3,
     SWOS_RENDER_KIND_REFEREE = 4,
+    SWOS_RENDER_KIND_CORNER_FLAG = 5,
 } SwosRenderKind;
 
 typedef struct {
@@ -69,8 +71,8 @@ typedef struct {
     SwosRenderLayer layer;
 
     // Which VM slot this command came from: 0..21 for players
-    // (PLSPR_TOTAL_SLOTS), -1 for the ball/shadow/goal frames/referee
-    // (each a single fixed sprite, not a pool).
+    // (PLSPR_TOTAL_SLOTS), 0..3 for corner flags, -1 for the ball/shadow/
+    // goal frames/referee (each a single fixed sprite, not a pool).
     int slot;
 
     // Raw VM state, unmodified -- the actual PlayerSprite.imageIndex /
@@ -137,12 +139,12 @@ typedef struct {
     int16_t palette;
 } SwosRenderCommand;
 
-// Ball + shadow + 2 goal frames + referee + up to 22 players = 27
-// commands, fixed upper bound so callers can size a stack array without a
-// separate count query. The referee slot is only ever filled when
-// swosRefereeVisible() is true (see swosRenderBuildFrame) -- most ticks it
-// stays unused, this is just the worst case.
-#define SWOS_RENDER_MAX_COMMANDS 27
+// Ball + shadow + 2 goal frames + referee + 4 corner flags + up to 22
+// players = 31 commands, fixed upper bound so callers can size a stack
+// array without a separate count query. The referee slot is only ever
+// filled when swosRefereeVisible() is true (see swosRenderBuildFrame) --
+// most ticks it stays unused, this is just the worst case.
+#define SWOS_RENDER_MAX_COMMANDS 31
 
 // Pure coordinate transform: worldX/Y minus cameraX/Y. No clamping, no
 // screen-bounds logic (a renderer decides whether/how to cull
@@ -167,13 +169,15 @@ void swosRenderSortCommands(SwosRenderCommand *commands, int count);
 // Reads the ball, its shadow, the two static goal frames (fixed real-world
 // position, not read from Memory at all), the referee (only when
 // swosRefereeVisible() -- most ticks it's off, this is a real VM state
-// check, not a stub), and all 22 player slots from the CURRENT VM Memory
-// state (via the existing ported BallSprite/PlayerSprite/Referee read
-// accessors -- no Memory writes) and writes up to SWOS_RENDER_MAX_COMMANDS
-// entries into outCommands, world-space and screen-space (against
-// cameraX/cameraY) but NOT yet sorted -- call swosRenderSortCommands()
-// separately if depth order is needed. Player slots whose team number is
-// neither 1 nor 2 (unused slots) are skipped, matching nds-app/main.c's own
-// existing filter. Returns the number of commands written.
+// check, not a stub), the four corner flags (real per-tick position/wind-
+// animation frame, via swosGameSpritesGetCornerFlag), and all 22 player
+// slots from the CURRENT VM Memory state (via the existing ported
+// BallSprite/PlayerSprite/Referee/GameSprites read accessors -- no Memory
+// writes) and writes up to SWOS_RENDER_MAX_COMMANDS entries into
+// outCommands, world-space and screen-space (against cameraX/cameraY) but
+// NOT yet sorted -- call swosRenderSortCommands() separately if depth
+// order is needed. Player slots whose team number is neither 1 nor 2
+// (unused slots) are skipped, matching nds-app/main.c's own existing
+// filter. Returns the number of commands written.
 int swosRenderBuildFrame(SwosRenderCommand *outCommands, int maxCommands,
                           int32_t cameraX, int32_t cameraY);

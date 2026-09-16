@@ -6,6 +6,7 @@
 #include <stdio.h>
 
 #include "swos_ball_sprite.h"
+#include "swos_game_sprites.h"
 #include "swos_memory.h"
 #include "swos_player_sprite.h"
 #include "swos_referee.h"
@@ -109,6 +110,12 @@ static void test_sort_commands_layer_beats_sortkey(void) {
 
 static void test_build_frame(void) {
     swosMemoryInit(true);
+    // Corner flags are computed per-tick by swosGameSpritesUpdateCornerFlags()
+    // (called every real frame from swos_game_loop.c) -- swosMemoryInit()
+    // alone leaves ADDR_cornerFlags zeroed, not at the real fixed positions.
+    // Call it explicitly to match the state swosRenderBuildFrame() actually
+    // sees after any real tick.
+    swosGameSpritesUpdateCornerFlags();
 
     swosBallSpriteSetXPixels(336);
     swosBallSpriteSetYPixels(449);
@@ -134,17 +141,19 @@ static void test_build_frame(void) {
     // (PlayerSprite.Init() already assigns all 22 slots a valid team 1/2,
     // not team 0 -- confirmed empirically, not assumed), so
     // swosRenderBuildFrame's team-number filter doesn't skip anyone here:
-    // shadow + ball + 2 goal frames + all 22 players = 26. NOT
-    // SWOS_RENDER_MAX_COMMANDS (27) -- that also budgets for the referee,
-    // which stays absent here (swosRefereeVisible() is false right after a
-    // fresh swosMemoryInit(), see test_build_frame_referee_visible below
-    // for the case where it's active).
+    // shadow + ball + 2 goal frames + all 22 players + 4 corner flags = 30.
+    // NOT SWOS_RENDER_MAX_COMMANDS (31) -- that also budgets for the
+    // referee, which stays absent here (swosRefereeVisible() is false
+    // right after a fresh swosMemoryInit(), see
+    // test_build_frame_referee_visible below for the case where it's
+    // active). Corner flags themselves are unconditional, unlike the
+    // referee -- all 4 exist for the whole match.
 
     SwosRenderCommand cmds[SWOS_RENDER_MAX_COMMANDS];
     int count = swosRenderBuildFrame(cmds, SWOS_RENDER_MAX_COMMANDS, 50, 60);
 
-    CHECK(count == 26,
-          "build frame: shadow + ball + 2 goal frames + all 22 default-initialized players (referee inactive)");
+    CHECK(count == 30,
+          "build frame: shadow + ball + 2 goal frames + all 22 players + 4 corner flags (referee inactive)");
 
     CHECK(cmds[0].kind == SWOS_RENDER_KIND_BALL_SHADOW && cmds[0].layer == SWOS_RENDER_LAYER_SHADOW,
           "build frame: command 0 is the ball's shadow");
@@ -203,6 +212,26 @@ static void test_build_frame(void) {
               "build frame: slot 11 image 1300 has no built atlas texture yet -- explicitly unresolved, not a silent standing-frame fallback");
     }
 
+    // Corner flags: real fixed positions (swos-port's own GS_LEFT/RIGHT_
+    // CORNER_FLAG_X, GS_TOP/BOTTOM_CORNER_FLAG_Y), all 4 always present,
+    // all resolving to the real corner-flag atlas.
+    int cornerFlagCount = 0;
+    bool sawTopLeft = false, sawTopRight = false, sawBottomLeft = false, sawBottomRight = false;
+    for (int i = 0; i < count; i++) {
+        if (cmds[i].kind != SWOS_RENDER_KIND_CORNER_FLAG)
+            continue;
+        cornerFlagCount++;
+        CHECK(cmds[i].imageResolved && cmds[i].atlasId == SWOS_RENDER_ATLAS_CORNERFLAG,
+              "build frame: a corner flag command resolves to the real corner-flag atlas");
+        if (cmds[i].worldX == 81 && cmds[i].worldY == 129) sawTopLeft = true;
+        if (cmds[i].worldX == 590 && cmds[i].worldY == 129) sawTopRight = true;
+        if (cmds[i].worldX == 81 && cmds[i].worldY == 769) sawBottomLeft = true;
+        if (cmds[i].worldX == 590 && cmds[i].worldY == 769) sawBottomRight = true;
+    }
+    CHECK(cornerFlagCount == 4, "build frame: exactly 4 corner-flag commands");
+    CHECK(sawTopLeft && sawTopRight && sawBottomLeft && sawBottomRight,
+          "build frame: all 4 corner flags sit at their real fixed pitch-corner positions");
+
     // maxCommands cap: pass a buffer too small to hold everything and
     // confirm the count is clamped, not overrun.
     SwosRenderCommand small[2];
@@ -220,6 +249,7 @@ static void test_build_frame(void) {
 // is test-only low-level access).
 static void test_build_frame_referee_visible(void) {
     swosMemoryInit(true);
+    swosGameSpritesUpdateCornerFlags(); // see test_build_frame's own comment on why
 
     swosWriteWord(REFSPR_BASE + PLSPR_OFF_VISIBLE, 1);
     swosWriteWord(REFSPR_BASE + PLSPR_OFF_IMAGE_INDEX, 1279);
@@ -228,7 +258,8 @@ static void test_build_frame_referee_visible(void) {
 
     SwosRenderCommand cmds[SWOS_RENDER_MAX_COMMANDS];
     int count = swosRenderBuildFrame(cmds, SWOS_RENDER_MAX_COMMANDS, 0, 0);
-    CHECK(count == 27, "build frame: referee command appears when swosRefereeVisible() is true");
+    CHECK(count == SWOS_RENDER_MAX_COMMANDS,
+          "build frame: referee command appears when swosRefereeVisible() is true, filling every slot (31)");
 
     const SwosRenderCommand *ref = NULL;
     for (int i = 0; i < count; i++)

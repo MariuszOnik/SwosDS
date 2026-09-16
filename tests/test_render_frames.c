@@ -110,6 +110,13 @@ static void test_known_spot_checks(void) {
     CHECK(swosRenderFramesLookup(1283, &info) && info.atlasId == SWOS_RENDER_ATLAS_REFEREE && info.atlasFrame == 10,
           "global 1283 (last referee frame) resolves to the referee atlas, local frame 10");
 
+    // Corner flags: global 1184-1187 (GS_CORNER_FLAG_SPRITE_START), the 4
+    // real wind-animation frames swosGameSpritesUpdateCornerFlags() cycles.
+    CHECK(swosRenderFramesLookup(1184, &info) && info.atlasId == SWOS_RENDER_ATLAS_CORNERFLAG && info.atlasFrame == 0,
+          "global 1184 (first corner-flag frame) resolves to the corner-flag atlas, local frame 0");
+    CHECK(swosRenderFramesLookup(1187, &info) && info.atlasId == SWOS_RENDER_ATLAS_CORNERFLAG && info.atlasFrame == 3,
+          "global 1187 (last corner-flag frame) resolves to the corner-flag atlas, local frame 3");
+
     // "Goal Post Split" (Phase 5 bugfix): global 1205/1206 = the real static
     // goal-frame overlay sprites (kTopGoalSprite/kBottomGoalSprite,
     // swos-port/src/sprites/sprites.h), inside BENCH.DAT's 1179-1333 range.

@@ -42,7 +42,7 @@ typedef enum {
 } SwosRenderFrameCategory;
 
 // atlasId values -- MUST match tools/extract_render_frames.py's ATLAS_*
-// constants. Only six real pixel atlases exist today; everything else is
+// constants. Only seven real pixel atlases exist today; everything else is
 // SWOS_RENDER_ATLAS_NONE until a future extraction pass builds more.
 #define SWOS_RENDER_ATLAS_NONE   (-1)
 #define SWOS_RENDER_ATLAS_PLAYER       0  // nds-app/graphics/player_atlas_texture.png, 101 frames (global 341-441, home team)
@@ -75,6 +75,10 @@ typedef enum {
 // accessors (swosReferee{Visible,ImageIndex,WorldX,WorldY,WorldZ}) already
 // existed -- only the pixel texture and RenderCommand wiring were missing.
 #define SWOS_RENDER_ATLAS_REFEREE      5  // nds-app/graphics/referee_atlas_texture.png, 11 frames (global 1273-1283)
+// swos_game_sprites.c's swosGameSpritesUpdateCornerFlags() already computed
+// real fixed position + wind-animation frame every tick; only the pixel
+// texture and RenderCommand wiring were missing.
+#define SWOS_RENDER_ATLAS_CORNERFLAG   6  // nds-app/graphics/cornerflag_atlas_texture.png, 4 frames (global 1184-1187)
 
 typedef struct {
     bool valid;               // true iff a real SWOS sprite header exists at this ordinal
