@@ -45,6 +45,7 @@
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerHeader.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerTackle.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/UpdatePlayers.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/InputControls.cs" />
     <!-- MatchAudioStub.cs, UpdateGoalsStub.cs, TeamDataLoaderStub.cs,
          PlayerControlledStub.cs, GodotStub.cs, AiStub.cs, CameraStub.cs,
          RefereeStub.cs, SetPiecesStub.cs (this directory) are auto-included

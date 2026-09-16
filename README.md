@@ -826,6 +826,85 @@ through the C port and byte-compares the full buffer.
 BlocksDS cross-compile (`nds-checkpoint/`, same `-Wall` flags): clean, zero
 warnings, `.nds` built successfully.
 
+## Status: step 8 (2026-09-16) — `InputControls.cs`
+
+The per-tick input + team-controls layer (`external/swos-port/src/controls/
+gameControls.cpp`, 332 LOC; 1037 lines in the C#) --
+`include/swos_input_controls.h`/`src/swos_input_controls.c`. Unlike
+`UpdatePlayers.cs` (step 7B), every function here except four file-static
+helpers is public in the C#, so most scenarios call the specific function
+under test directly rather than routing everything through one entry point.
+Ported in full: `resetGameControls`, `updateFireBlocked`,
+`selectTeamForUpdate`, `updateTeamControls`/`postUpdateTeamControls`,
+`getPlayerEvents`/`isPlayerFiring`/`isAnyPlayerFiring`,
+`getFireStartedAndBumpFireCounter` (the quick-fire/normal-fire counter state
+machine), `eventsToDirection`/`directionToEvents`, `filterOverlappedEvents`
+(the up+down / left+right conflict resolver), and the two private
+`updatePlayers.cpp`-adjacent functions `UpdateControlledPlayer`
+(swos.asm:100851-101034 -- picks the closest eligible outfielder to the
+ball as the team's controlled sprite during open play) and
+`UpdatePlayerBeingPassedTo`/`...Stopped` (swos.asm:101045-101321 -- the
+AI's "incoming pass" candidate selection, in-progress and stopped variants).
+
+**Comment-filtered dependency scan (whole file) found exactly one new real
+call:** `Bench.InBench()` (the bench-menu control-reset branch in
+`UpdateTeamControls`) -- pulled forward as a minimal one-line slice
+(`include/swos_bench.h`/`src/swos_bench.c`, `swosBenchInBench()` ==
+`Memory.ReadSignedWord(g_inSubstitutesMenu) != 0`), not the rest of
+`Bench.cs` (1868 lines, the substitutes-menu UI/state machine -- a
+different layer, its own future step). No new gameplay-affecting
+dependency required a hook or a stop-and-report.
+
+**Deliberately not ported (documented, not stubbed):**
+`DebugForceP1Direction`/`DebugForceP1Fire` (C#:104-105) are declared but
+never *read* anywhere in the whole OpenSWOS tree (grep-verified across the
+entire repo, not just this file) -- zero effect on `Memory`/control flow by
+construction, not even telemetry. `StubZoomIn`/`StubZoomOut`
+(`camera.cpp` `zoomIn`/`zoomOut`) have empty C# bodies (`/* TODO */`) --
+porting an intentional no-op as a no-op is fidelity, not a gap.
+`StubRequestFadeAndInstantReplay`/`...SaveReplay` are different and *are*
+ported for real: both write a genuine `Memory` word (the replay-request
+flag) even though the replay *consumer* isn't wired yet -- the C#'s own
+comment explains the producer is wired ahead of the consumer on purpose.
+Two `ic_*` diagnostic counter pairs (`CtrlSwapHuman{Top,Bot}`/
+`CtrlSwapAi{Top,Bot}`) are real port-only telemetry (the C#'s own comment:
+"the original keeps no such counters") -- kept as a small
+`SwosInputControlsTelemetry` struct + `swosInputControlsResetTelemetry()`,
+mirroring the established `SwosPlayerControlledTelemetry` pattern from step
+6A.
+
+**`eventsToDirection`/`directionToEvents` have no `Memory` side effects of
+their own** -- a full-buffer diff can't observe a pure function's return
+value directly. Exercised indirectly instead: `directionToEvents` via
+`swosInputControlsSetJoystickState` (writes the resulting events bitmask to
+`Memory`) and `eventsToDirection` via `swosUpdateTeamControls`'s internal
+`updateTeamControlsInternal` (writes the resulting direction into
+`TeamData.OffCurrentAllowedDirection`/`OffDirection`) -- both exercised with
+varied direction/event combinations across the `UpdateTeamControls`
+scenarios below.
+
+**Differential tests, full VM/Memory state:**
+`tools/csharp-golden-dump/Step8Golden.cs` runs 23 scenarios -- direct calls
+for every public leaf function (`resetGameControls`; all three
+`updateFireBlocked` branches; both `selectTeamForUpdate` parities;
+`getPlayerEvents`/`filterOverlappedEvents`'s no-conflict/up-down/left-right
+cases; `isPlayerFiring`/`isAnyPlayerFiring` true/false;
+`getFireStartedAndBumpFireCounter`'s full press-hold-release state-machine
+sequence; `setJoystickState` with and without a direction/fire;
+`postUpdateTeamControls`'s header-or-tackle clear) plus seven
+`updateTeamControls(top)` scenarios that route through it to exercise the
+two private functions: human-team normal play (promotion + input + fire
+latching), a CPU team (input branch skipped), a dead ball (no promotion),
+a closest-candidate disqualified by `sentAway`+mid-tackle (third-closest
+promoted instead), a game-stopped pass-to-player election, and a
+bench-menu control reset. `tests/test_step8_golden.c` replays each setup
+through the C port and byte-compares the full buffer.
+
+**23/23 match byte-for-byte, first run.** `make test` (eleven suites):
+**283/283** pass (26 + 44 + 2 + 40 + 25 + 31 + 45 + 12 + 24 + 11 + 23).
+ARM9/BlocksDS cross-compile: clean, zero warnings, `.nds` built
+successfully.
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
@@ -860,7 +939,7 @@ warnings, `.nds` built successfully.
      step 9 (reusing 6A's hook globals); the two real `SetPieces` calls
      this file makes get a new assert-backed hook pair, replaced in step
      10 — never a silent no-op~~ (2026-09-16, see Status above)
-8. `InputControls`
+8. ~~`InputControls`~~ (2026-09-16, see Status above)
 9. `AiHelpers`, `AiBrain`
 10. `SetPieces`, `GameTime`, `Referee` — `GameTime.cs` also unblocks
     `Result.RegisterScorer`'s `PORT_PENDING` hook (step 4's
