@@ -1,31 +1,25 @@
-// SOURCE: openswos game/scripts/Sim/Port/Referee.cs:41-99, 141-190,
-// 563-593, 625-629, 688-706 (ActivateReferee + its private helpers +
-// RefereeSprite ONLY -- see below for why only these).
+// SOURCE: openswos game/scripts/Sim/Port/Referee.cs (full file, step 10 of
+// the porting order). ActivateReferee + its private helpers + RefereeSprite
+// were forward-pulled in step 7A (see below); this step ports the rest --
+// the per-tick state machine (UpdateReferee), card-handing/booking-sprite
+// animation, and sending players off.
 // FIDELITY: VERIFIED_PC -- direct mechanical port, no logic changes.
 //
-// FORWARD-PULLED DEPENDENCY, MINIMAL SLICE: PlayerTackle.PlayerTacklingTestFoul
-// calls Referee.ActivateReferee() when a foul draws a card (grep-verified:
-// the only Referee member PlayerTackle.cs uses). ActivateReferee's own
-// private helpers (InitRefereeAnimationTable, MarkDisplaySpritesDirty,
-// SwosRand) and the RefereeSprite Memory-view class it writes through are
-// pulled in alongside it. The rest of Referee.cs -- the full referee
-// state-machine tick (UpdateReferee), card-handing/booking-sprite
-// animation, sending players off, etc. -- is a different layer (per-tick
-// referee movement/rendering, not "a foul just happened, register it"),
-// not called from anything ported so far; port it when its own caller
-// (UpdatePlayers.cs's per-tick referee update, step 10 per the porting
-// order) is ported.
+// Referee.NotifyEnteredAboutToGiveCard (called from UpdatePlayers.cs) and
+// EVERY Dbg* counter in this file (DbgActivations/DbgEnteredIncoming/
+// DbgEnteredWaiting/DbgEnteredAboutToGive/DbgEnteredBooking/DbgEnteredLeaving/
+// DbgEnteredOffScreen/DbgYellowCards/DbgRedCards/DbgSecondYellowCards/
+// DbgPlayersSentAway + ResetDebugCounters) are NOT ported -- verified by
+// reading each one: pure C#-side ints/increments with public getters for
+// the smoke test, zero Memory effect, same pattern as every other *Golden
+// telemetry omission in this port.
 //
-// Referee.NotifyEnteredAboutToGiveCard (called from UpdatePlayers.cs) is
-// NOT ported here -- verified by reading it: `DbgEnteredAboutToGive++`,
-// one of Referee.cs's own debug/telemetry counters (zero Memory effect,
-// same pattern as every other *Golden telemetry omission in this port).
-// Its one call site is simply omitted, documented, not stubbed.
-//
-// Also NOT ported: ActivateReferee's own Dbg* counter increments
-// (DbgActivations/DbgYellowCards/DbgRedCards/DbgSecondYellowCards/
-// DbgEnteredIncoming) -- same telemetry pattern, zero Memory effect.
+// Audio omitted (StubEnqueueRedCardSample/StubEnqueueYellowCardSample --
+// pure playback into MatchAudio, zero Memory effect, same pattern as every
+// other MatchAudio omission in this port).
 #pragma once
+
+#include <stdbool.h>
 
 // referee.cpp:50-75. Called when a foul draws a card: points the referee
 // sprite at the foul position (with a randomised approach angle/side) and
@@ -39,3 +33,50 @@ void swosRefereeActivate(void);
 // layout as BallSprite/PlayerSprite -- field offsets reuse the PLSPR_OFF_*
 // macros directly rather than redefining identical constants.
 #define REFSPR_BASE 0x4FD00
+
+// Memory-backed sprite view for the booked-player-number digit (a small
+// floating sprite painted above the booked player during card animation).
+// Mirrors swos-port's `static Sprite m_bookedPlayerNumberSprite{3}`.
+// Allocated at 0x4FD80 -- 128 bytes after REFSPR_BASE.
+#define BKPLSPR_BASE 0x4FD80
+
+// referee.cpp:24-31 -- RefereeState enum.
+#define REF_ST_OFF_SCREEN        0
+#define REF_ST_INCOMING          1
+#define REF_ST_WAITING_PLAYER    2
+#define REF_ST_ABOUT_TO_GIVE_CARD 3
+#define REF_ST_BOOKING           4
+#define REF_ST_LEAVING           5
+
+// referee.cpp:33-39 -- CardHanding enum.
+#define REF_CARD_NONE          0
+#define REF_CARD_YELLOW        1
+#define REF_CARD_RED           2
+#define REF_CARD_SECOND_YELLOW 3
+
+// referee.cpp:77-80 -- refereeActive.
+bool swosRefereeActive(void);
+
+// referee.cpp:82-85 -- cardHandingInProgress.
+bool swosRefereeCardHandingInProgress(void);
+
+// ---- Read-only render accessors (task #181, mechanical port) --------------
+int  swosRefereeState(void);
+int  swosRefereeWhichCard(void);
+bool swosRefereeVisible(void);
+int  swosRefereeImageIndex(void);
+int  swosRefereeWorldX(void);
+int  swosRefereeWorldY(void);
+int  swosRefereeWorldZ(void);
+
+// referee.cpp:87-99 -- updateReferee. Main per-tick entry point.
+void swosRefereeUpdateReferee(void);
+
+// referee.cpp:101-151 -- updateBookedPlayerNumberSprite. Renders + blinks
+// the player-number sprite over the booked player's head during the
+// kRefBooking phase.
+void swosRefereeUpdateBookedPlayerNumberSprite(void);
+
+// referee.cpp:163-185 -- removeReferee. Hides referee + resets to hiding
+// position. Called when the leaving animation completes.
+void swosRefereeRemoveReferee(void);

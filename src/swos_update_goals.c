@@ -1,10 +1,15 @@
 // SOURCE: openswos game/scripts/Sim/Port/UpdateGoals.cs (full file)
-// FIDELITY: VERIFIED_PC -- direct mechanical port, no logic changes. See
-// header for the Result.RegisterScorer PORT_PENDING note.
+// FIDELITY: VERIFIED_PC -- direct mechanical port, no logic changes.
+//
+// swosRegisterScorerHook: the PORT_PENDING boundary from step 4 is closed
+// as of step 10 -- Result.cs is now fully ported (swos_result.h/.c) and
+// GameTime.GameTimeAsBcd() (its one remaining real dependency) exists, so
+// the hook is statically wired to the real implementation below.
 #include "swos_update_goals.h"
 #include "swos_addr.h"
 #include "swos_memory.h"
 #include "swos_player_sprite.h"
+#include "swos_result.h"
 #include "swos_team_data.h"
 
 #include <stdint.h>
@@ -15,7 +20,7 @@
 
 #define kMaxGoals 99
 
-SwosRegisterScorerFn swosRegisterScorerHook = 0;
+SwosRegisterScorerFn swosRegisterScorerHook = swosResultRegisterScorer;
 
 bool swosUpdateGoalsBumpTeamGoals(int teamNum) {
     bool isSecondTeam = teamNum == 2;

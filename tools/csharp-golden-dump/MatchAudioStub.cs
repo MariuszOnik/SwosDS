@@ -48,4 +48,9 @@ public static class MatchAudio
 
     // Added for step 7B (UpdatePlayers.cs) -- same rationale as above.
     public static void KeeperSavedComment() { }
+
+    // Added for step 10 (GameTime.cs/Referee.cs) -- same rationale as above.
+    public static void PlayEndGameWhistle() { }
+    public static void EnqueueRedCard() { }
+    public static void EnqueueYellowCard() { }
 }

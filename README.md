@@ -1017,6 +1017,113 @@ byte-compares the full buffer.
 ARM9/BlocksDS cross-compile: clean, zero warnings, `.nds` built
 successfully.
 
+## Status: step 10 (2026-09-16) — `SetPieces.cs`, `GameTime.cs`, `Referee.cs`, plus `Result.cs`
+
+Comment-filtered dependency scan (per this step's own instructions, before
+writing any code) found all three files' dependencies already ported except:
+`SetPieces.AdvancePenaltiesTimer` → `GameTime.NextPenalty` (this step);
+`GameTime.NextPenalty` → `GameLoop.PlayersLeavingPitch` and
+`InitPitchBallFactors` → `BallSim.CurrentPitchType`; `Referee.cs` (its
+`ActivateReferee` already forward-pulled in step 7A) → `Camera.GetCameraXWhole`
+(joining the existing `GetCameraYWhole`) and a new `BookedPlayerNumberSprite`
+Memory view. Porting order followed the dependency chain: `GameLoop.
+PlayersLeavingPitch` (minimal slice) → `GameTime.cs` (full) → `Referee.cs`
+(rest of it) → `SetPieces.cs` (full, its only new dependency now satisfied).
+
+**`GameLoop.PlayersLeavingPitch` — forward-pulled whole, not the rest of
+`GameLoop.cs`:** `include/swos_game_loop.h`/`src/swos_game_loop.c`. Small
+(29 lines), fully self-contained (`Memory`/`TeamData`/`TeamPort` only, all
+already ported) — same pattern as `GameTime.AmigaModeActive()` (step 9) or
+`UpdateBallWithControllingGoalkeeper` (step 4). The rest of `GameLoop.cs`
+(~1900+ lines, the full per-tick orchestrator) is step 11.
+
+**`BallSim.CurrentPitchType` — port-only C-side global, not a `Memory`
+slot:** `BallSim` lives in `BallState.cs` (470 lines) — a completely
+different, idiomatic ball-physics layer built on its own `Fixed`/`BallState`
+type family, not part of the `SwosVm.Memory`-based mechanical-port family
+at all. `InitPitchBallFactors` reads exactly one member (grep-verified), so
+only that one value is ported (`g_swosBallSimCurrentPitchType`, default 4 =
+Normal) as a plain C global in `swos_game_time.c` — same treatment as
+`PlayerEnergy.EffectEnabled`/`TimeDeltaOverride`.
+
+**`Result.cs` checked before extending scope, per this step's instructions
+— does NOT open a large independent chain:** 407 lines — `RegisterScorer`
+(scorer list) + the result-display timer state machine
+(`UpdateResult`/`HideResult`/`ShouldDrawResult`) + `ResetResult`.
+`RegisterScorer`'s one real dependency is `GameTime.GameTimeAsBcd()`,
+ported this same step. The scorer list (`m_team{1,2}Scorers`) and team-name
+cache live in plain C#-side statics outside the emulated `Memory` entirely
+(the C#'s own comment: "we don't add 8×10 byte arrays to Memory.cs because
+they're nested 3-deep") — ported as plain C statics
+(`include/swos_result.h`/`src/swos_result.c`). Full file ported; wired
+`swosRegisterScorerHook` (NULL-defaulting since step 4's
+`swos_update_goals.h`) to the real `swosResultRegisterScorer`, closing that
+`PORT_PENDING` boundary.
+
+**Omitted (documented, not stubbed, zero `Memory` effect — confirmed by
+reading each one):** audio (`MatchAudio.PlayEndGameWhistle`/
+`EnqueueRedCard`/`EnqueueYellowCard` — pure playback, same pattern as every
+prior step) and the entire `HalftimeCeremonyStage`/
+`SetHalftimeCeremonyStage`/`s_halftimeCeremonyStage` chain — the C#'s own
+comment claims it's "kept for Main.cs compile compatibility", but a
+whole-tree grep shows ZERO references anywhere outside `GameTime.cs` itself
+(not even in `Main.cs`) — genuinely dead code, same category as
+`InputControls.cs`'s `DebugForceP1Direction`/`DebugForceP1Fire` (step 8).
+Also the whole clock-digit rendering chain (`DrawGameTime`/
+`DrawGameTimeImpl`/`GetGameTimeSprites`/`GetSpriteWidth`/
+`StubDrawMenuSprite`) — `StubDrawMenuSprite` is ALREADY a no-op in the C#
+source (`/* TODO */`, no menu sprite-descriptor stream loaded), so this
+entire call chain has zero `Memory` effect end to end; nothing to port
+beyond a no-op the source already documents as one.
+
+**A real static kept, not telemetry:** `s_stoppageRealTicks`
+(`GameTime.cs`) looks like a presentation-only "+M:SS" injury-time counter,
+but it gates a real control-flow branch in `UpdateGameTime` (the
+last-minute-prolong backstop) — ported as a genuine C static, not omitted.
+Reset by `swosGameTimeResetGameTime()`, matching the C#.
+
+**RNG and static-state discipline (explicitly checked):** `Rng` stays a
+separate static set from `Memory`, as established. Every function drawing
+`Rng` bytes this step (`TickPenalty`, `StartFirstExtraTime`/
+`StartPenalties`, `MarkPlayersHappyOrSad`, `ActivateReferee`/
+`PutRefereeToLeavingState`) gets an explicit matching reseed on both sides
+wherever the branch outcome depends on it. Separately:
+`GameTime.s_stoppageRealTicks` and `Result.cs`'s scorer-list statics are
+C#-side statics that persist across the whole golden-dump process (every
+`*Golden.Run()` shares one process) — every scenario touching either calls
+`GameTime.ResetGameTime()`/`Result.ResetResult()` first so state from an
+earlier scenario can't leak in.
+
+**Differential tests, full VM/Memory state, every public entry point of all
+four modules:** `tools/csharp-golden-dump/Step10Golden.cs`, 59 scenarios —
+full coverage of `SetPieces.cs` (both `SetThrowInPlayerDestinationCoordinates`
+branches, the whole `TickThrowIn` state machine — AI/human, quick/normal
+fire, mid-countdown, abort-on-wrong-gameState — `DispatchByGameState`'s
+three routes, `TickSetPieces` and all four resolvers, `TickFreeKick`,
+`TickPenalty`'s both branches, `AdvancePenaltiesTimer`'s both branches),
+`GameTime.cs` (the clock lifecycle — normal tick, minute rollover, prolong
+pin/refresh, `EndFirstHalf` firing past a draining goal celebration,
+accessors, `MarkPlayersHappyOrSad`'s both outcomes, `NextPenalty`'s both
+outcomes, every `initMatch()`-adjacent helper), `Referee.cs` (the whole
+`UpdateReferee` state machine — incoming walk, off-screen movement,
+inactive, about-to-give-card→booking for yellow/red, leaving→off-screen,
+`UpdateBookedPlayerNumberSprite`'s blink-on and sentinel-sends-off paths,
+`RemoveReferee`, accessors), and `Result.cs` (the full `UpdateResult`
+lifecycle, `RegisterScorer` for a regular goal/own goal/second goal by the
+same scorer). Four integration scenarios per the review request: a full
+throw-in cycle, corner-then-free-kick direction update, a card activating
+the referee and walking them in, and time passing to half-time with the
+result panel showing. `tests/test_step10_golden.c` replays each scenario
+through the C port and byte-compares the full `0x60000` buffer.
+
+**59/59 match byte-for-byte, first run.** `make test` (thirteen suites):
+**369/369** pass (26 + 44 + 2 + 40 + 25 + 31 + 45 + 12 + 24 + 11 + 23 + 27 +
+59). ARM9/BlocksDS cross-compile: clean, zero warnings, `.nds` built
+successfully (build-only check, same as step 6A — no runtime-checkpoint
+expansion this step).
+
+Closes the last deferred hook from step 4 (`swosRegisterScorerHook`).
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
@@ -1054,18 +1161,16 @@ successfully.
      10 — never a silent no-op~~ (2026-09-16, see Status above)
 8. ~~`InputControls`~~ (2026-09-16, see Status above)
 9. ~~`AiHelpers`, `AiBrain`~~ (2026-09-16, see Status above)
-10. `SetPieces`, `GameTime`, `Referee` — `GameTime.cs` also unblocks
-    `Result.RegisterScorer`'s `PORT_PENDING` hook (step 4's
-    `swosRegisterScorerHook`). `GameTime.AmigaModeActive()` (one line,
-    `=> false`) was already pulled forward as a minimal slice in step 9
-    (`swos_game_time.h`/`.c`) -- the rest of the 1736-line file is still
-    this step's to do.
-11. `GameLoop` orchestration
+10. ~~`SetPieces`, `GameTime`, `Referee`, plus `Result.cs`~~ (2026-09-16,
+    see Status above) -- `GameTime.cs` also unblocked `Result.RegisterScorer`'s
+    `PORT_PENDING` hook (step 4's `swosRegisterScorerHook`), now wired to
+    the real `Result.cs` port. Forward-pulled minimal slices:
+    `GameLoop.PlayersLeavingPitch` (`swos_game_loop.h`/`.c`),
+    `BallSim.CurrentPitchType` (a plain C global in `swos_game_time.c`).
+11. `GameLoop` orchestration -- `PlayersLeavingPitch` already forward-pulled
+    (step 10); the rest of the ~1900+-line file is still this step's to do.
 12. Adapter from VM state to the DS renderer (mirrors `swos-ds`'s
     `game_state.c` `swosTick()` boundary)
-
-Also newly discovered, not slotted into a specific step yet: `Result.cs`
-(407 lines, needed to wire up `RegisterScorer`).
 
 After each module: desktop build + tests, diff against OpenSWOS behavior
 where practical, periodic `.nds` build once there's something to render.

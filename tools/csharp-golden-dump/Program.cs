@@ -35,5 +35,6 @@ Step7AGolden.Run(outDir);
 Step7BGolden.Run(outDir);
 Step8Golden.Run(outDir);
 Step9Golden.Run(outDir);
+Step10Golden.Run(outDir);
 
 return 0;

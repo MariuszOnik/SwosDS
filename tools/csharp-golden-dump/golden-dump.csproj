@@ -48,12 +48,20 @@
     <Compile Include="../../../openswos/game/scripts/Sim/Port/InputControls.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/AiHelpers.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/AiBrain.cs" />
-    <!-- MatchAudioStub.cs, UpdateGoalsStub.cs, TeamDataLoaderStub.cs,
-         PlayerControlledStub.cs, GodotStub.cs, AiStub.cs, CameraStub.cs,
-         RefereeStub.cs, SetPiecesStub.cs (this directory) are auto-included
-         by the SDK; see each one's header comment for why BallUpdate.cs/
-         BallOutOfPlay.cs/SpriteUpdate.cs/PlayerActions.cs/PlayerUpdate.cs/
-         PlayerTackle.cs/UpdatePlayers.cs need a stand-in for those specific
+    <!-- Step 10: SetPieces.cs, GameTime.cs, Referee.cs, Result.cs, and the
+         real UpdateGoals.cs (superseding UpdateGoalsStub.cs, whose own
+         header said to delete it once Result.cs/GameTime.cs land). -->
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/SetPieces.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/GameTime.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/Referee.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/Result.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/UpdateGoals.cs" />
+    <!-- MatchAudioStub.cs, TeamDataLoaderStub.cs, PlayerControlledStub.cs,
+         GodotStub.cs, AiStub.cs, CameraStub.cs, BallSimStub.cs,
+         GameLoopStub.cs (this directory) are auto-included by the SDK; see
+         each one's header comment for why BallUpdate.cs/BallOutOfPlay.cs/
+         SpriteUpdate.cs/PlayerActions.cs/PlayerUpdate.cs/PlayerTackle.cs/
+         UpdatePlayers.cs/GameTime.cs need a stand-in for those specific
          types rather than their real (larger, Godot-dependent, or
          deliberately-deferred) source files. -->
   </ItemGroup>
