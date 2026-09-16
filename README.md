@@ -483,6 +483,96 @@ Per the user's explicit instruction, the ARM/BlocksDS checkpoint is **not**
 repeated after this step alone — next one is after step 5.5, once both
 player modules are joined.
 
+## Status: step 5.5 (2026-09-16) — `PlayerUpdate.cs`, the rest of it
+
+The remaining ~1490 lines of `PlayerUpdate.cs` (`UpdateBallWithControllingGoalkeeper`
+was already done in step 4) are fully ported into `swos_player_update.{h,c}`
+— goalkeeper AI: `GoalkeeperClaimedTheBall`, `TickGoalieDivingClaimCompletion`,
+`GoalkeeperCaughtTheBall`, `TickGoalieCatchingBall`, `TickGoalieClaimed`,
+`TickGoalkeeperHoldAutoRelease`, `GetFramesNeededToCoverDistance`,
+`ShouldGoalkeeperDive`, `GoalkeeperJumping`, `GoalkeeperDeflectedBall`,
+`RunShotTripWire`, `RunShotAtGoal` (+ its private `ApplyGoalScoredBranch`/
+`ApplyGoalkeeperSavedBranch`/`OwnPlayersBase`/`OpponentPlayersBase` helpers)
+— `goto`/labels preserved verbatim throughout, including the
+`SwosShotChainExit` enum mirroring the asm's named jump targets.
+
+**Scoping decisions, same discipline as step 5:**
+
+- **Keeper-dive telemetry** (`s_diveCallsHigh`/`s_diveCallsLow`/
+  `s_shouldDiveTrueCount` and their bump/reset/getter surface) — the C#
+  source's own comment confirms this is a dev diagnostic ("useful for
+  tracking regression on the dive bug fix"), zero `Memory` effect. Omitted
+  at its three call sites, documented, not stubbed — same pattern as
+  `PlayerActions.cs`'s shot counters.
+- **`MatchAudio.KeeperClaimedComment`/`PlayKick`** — omitted (audio).
+- **A `Godot.GD.Print("[PORT-SAFETY] ...")` debug line** in
+  `TickGoalkeeperHoldAutoRelease` — a log statement, zero `Memory` effect,
+  omitted.
+- **`TeamPort.StopAllPlayers`** — forward-pulled as a **minimal slice**
+  (`swos_team_port.{h,c}`): just `StopAllPlayers`/`StopPlayers`, the only
+  `TeamPort` member this file calls. `TeamPort.cs`'s shot-chance-table
+  machinery (`kGoalieSkillTables`, `UpdatePlayerShotChanceTable`, etc.) is
+  a different layer (team-file-loading-adjacent setup), not called here.
+- **`PortPlayerState` enum** — pulled forward *whole* (`swos_player_state.h`,
+  16 tiny named byte values, no logic) from `UpdatePlayers.cs` (step 7),
+  since it'll be needed unchanged by every future step that inspects
+  `PlayerSprite.OffPlayerState` — cheaper to port once now than re-derive
+  piecemeal later.
+- **`TeamDataLoader`/`PlayerEnergy`** — both existing minimal-slice headers
+  from step 5 extended with exactly what this step's functions call:
+  `TDL_OFF_GOALIE_SKILL` (`RunShotAtGoal` reads `PlayerInfo.goalieSkill`)
+  and `DrainOnKeeperCatch`/`KeeperSkillPenalty` (`GoalkeeperClaimedTheBall`/
+  `RunShotAtGoal`'s fatigue hooks).
+
+**Differential tests, full VM/Memory state, same pattern as steps 2.5/4/5:**
+`tools/csharp-golden-dump/PlayerUpdateGolden.cs` runs the real
+`PlayerUpdate.*` through 45 scenarios (every claim/catch/dive-completion
+state transition, the CPU-only keeper-hold auto-release safety net's every
+gate, `ShouldGoalkeeperDive`'s behind/front/penalty branches,
+`GoalkeeperJumping`'s near/far/slower/random speed selection for both
+teams, weak/strong deflection, the shot trip-wire's early exits, and
+`RunShotAtGoal`'s forced-saved/goal-scored/saved-with-and-without-a-
+committed-dive paths) and dumps the entire 0x60000-byte buffer per
+scenario. `tests/test_player_update_golden.c` replays each setup through
+the C port and byte-compares the full buffer.
+
+Getting the real `PlayerUpdate.cs` into the headless harness (replacing
+step 4's `PlayerUpdateStub.cs`, now deleted per its own header's
+instruction) needed two new stand-ins: `GodotStub.cs` (a no-op `Godot.GD.Print`
+— the one real Godot reference in this file, a debug log with no simulation
+effect either side omits) and `PortPlayerStateStub.cs` (the same 16-value
+enum as `swos_player_state.h`, verbatim, so `PlayerUpdate.cs` can compile
+without pulling in the rest of `UpdatePlayers.cs`). `TeamPort.cs` itself has
+no Godot dependency and is referenced directly, not stubbed.
+
+**44/45 matched on the first run; the 45th (`hold_release_cpu_fires`)
+caught a real bug — in the C# test harness, not the C port.**
+`PlayerActionsGolden.cs`'s `kick_finishing_with_wired_skill_and_fatigue`
+scenario (step 5) sets `PlayerEnergy.EffectEnabled = true` to exercise the
+fatigue path but never reset it — a harmless-looking oversight *within*
+that file (none of its own later scenarios happened to touch the fatigue
+code path again), but `Program.cs` runs every `*Golden.Run()` in one
+process, so the flag stayed stuck `true` into every one of
+`PlayerUpdateGolden.cs`'s scenarios too. One of them called
+`PlayerKickingBall` on a keeper with zero energy, which only *then* read as
+"exhausted" and took a different finishing-skill bucket than intended —
+exposing a real behavioral divergence in the test *setup*, not in either
+port. Root-caused by probing `swosPlayerKickingBall` in isolation with the
+exact same inputs (a throwaway `tests/zz_probe.c`, deleted after use) and
+comparing against the two candidate skill tables directly. Fixed by
+resetting `PlayerEnergy.EffectEnabled = false` right after that one step-5
+scenario in `PlayerActionsGolden.cs`; regenerated golden dumps, reran both
+`test_player_actions_golden.c` and `test_player_update_golden.c` — still
+31/31 and now 45/45. Worth remembering: a `public static` field written by
+a test scenario is state that outlives that scenario for the rest of the
+process — reset it explicitly, don't rely on the next `Memory.Init()` (which
+only resets `Memory`, not C#-side statics like `PlayerEnergy.EffectEnabled`).
+
+`make test` (seven suites): **213/213** pass (26 + 44 + 2 + 40 + 25 + 31 + 45).
+
+Both player modules (`PlayerActions.cs`, `PlayerUpdate.cs`) are now fully
+joined — the ARM/BlocksDS checkpoint deferred from step 5 is next.
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
@@ -499,14 +589,11 @@ player modules are joined.
    (`SetPlayerAnimationTable` was already done, step 3) — forward-pulled
    minimal slices: `TeamDataLoader`'s `PlayerInfo` offset constants,
    `PlayerEnergy`'s `EffectEnabled`/`ShotPenalty`/`SpeedStep`
-5.5. `PlayerUpdate.cs` — the rest of it (1553 - 35 lines; only
-   `UpdateBallWithControllingGoalkeeper` is done, step 4). Not in the
-   original plan at all — discovered as a `BallUpdate.cs` dependency.
-   Split from step 5 into its own sub-step (same reason as step 2.5): two
-   ~1500-line files is enough to want separate commits and separate
-   differential tests, not one large mixed one. Do 5 first (5.5 doesn't
-   block anything on its own — `UpdateBallWithControllingGoalkeeper`, the
-   one piece step 4 actually needed, is already done).
+5.5. ~~`PlayerUpdate.cs`~~ (2026-09-16, see Status above) — the rest of it
+   (`UpdateBallWithControllingGoalkeeper` was already done, step 4) —
+   forward-pulled minimal slices: `TeamPort.StopAllPlayers`, the whole
+   (tiny) `PortPlayerState` enum, plus extensions to step 5's
+   `TeamDataLoader`/`PlayerEnergy` slices.
 6. `PlayerControlled`
 7. `UpdatePlayers`
 8. `InputControls`

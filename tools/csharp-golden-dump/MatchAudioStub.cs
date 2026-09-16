@@ -35,4 +35,7 @@ public static class MatchAudio
     public static void HeaderComment() { }
     public static void CancelGoodPass() { }
     public static void EnqueueGoodPass() { }
+
+    // Added for step 5.5 (PlayerUpdate.cs) -- same rationale as above.
+    public static void KeeperClaimedComment() { }
 }

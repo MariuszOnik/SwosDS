@@ -244,6 +244,12 @@ public static class PlayerActionsGolden
             Memory.WriteWord(out2_1 + PlayerSprite.OffEnergy, PlayerEnergy.Max / 20); // <10% -> ShotPenalty=1
             BallSprite.XPixels = 300; BallSprite.YPixels = 150;
         }, () => PlayerActions.PlayerKickingBall(TeamData.BottomBase, out2_1));
+        // PlayerEnergy.EffectEnabled is a static field -- reset it so it doesn't
+        // leak into every scenario after this one (in this file and, since
+        // Program.cs runs all *Golden.Run() calls in one process, every later
+        // file's scenarios too -- caught this exact leak via a step-5.5
+        // differential mismatch in PlayerUpdateGolden's hold_release_cpu_fires).
+        PlayerEnergy.EffectEnabled = false;
 
         // ---- PlayerHittingStaticHeader ----
         Scenario("static_header", () =>
