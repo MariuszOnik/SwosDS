@@ -2226,3 +2226,33 @@ yet, same honest-simplification precedent as Step 12's hand-picked
 formation). `make test`: 19/19 (unaffected -- pure pixel-data change, no
 `src`/`include` logic touched). `nds-app/` and `sprite-lab/`: rebuilt
 picking up the new texture. Separate commit.
+
+### Status: Phase 5 follow-up (2026-09-16) — worldY draw-order sort wired in
+
+`swosRenderSortCommands()`/`swosRenderSortKeyForWorldY()` (Phase 2's own
+`swos_render_commands.c`) existed and were already unit-tested, but nothing
+in `nds-app/source/main.c`'s actual draw loop ever called them -- commands
+drew in `swosRenderBuildFrame()`'s slot order (ball, shadow, then players
+0-21), so two players crossing paths vertically could draw in the wrong
+front/back order.
+
+User asked whether this depth-sort is real original SWOS behavior or a new
+feature: confirmed real, not invented -- `swos-port/src/sprites/
+gameSprites.cpp:339-344`'s `sortDisplaySprites()` does exactly this,
+`std::sort`-ing every visible sprite ascending by `sprite->y` before every
+draw. It was never ported into `openswos`'s C# `Sim/Port` layer
+(`GameSprites.cs`'s own header explicitly lists it under "EXCLUDED ...
+all pure render" -- out of scope for a simulation-only port), so
+`swos_render_commands.c`'s plain-worldY sort key is an independent
+from-scratch reconstruction of the same real rule, not a mechanical port
+of it.
+
+Fix: one line, `swosRenderSortCommands(cmds, cmdCount);` in `nds-app/
+source/main.c`, right after `swosRenderBuildFrame()` and before the draw
+loop. `make test`: 19/19 (unaffected -- the sort function itself was
+already exercised by `test_render_commands.c`). ARM9/BlocksDS (`nds-app/`):
+clean rebuild, zero warnings. `sdl-debug/` and `sprite-lab/`: unaffected
+(neither touches `nds-app/source/main.c`; `sdl-debug` doesn't use the
+RenderCommand pipeline at all, it's a plain-dot lockstep debug visualizer
+predating Phase 2). Visual confirmation on melonDS/hardware still the
+user's own next step.

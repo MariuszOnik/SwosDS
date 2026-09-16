@@ -182,6 +182,11 @@ int main(int argc, char **argv)
 
         SwosRenderCommand cmds[SWOS_RENDER_MAX_COMMANDS];
         int cmdCount = swosRenderBuildFrame(cmds, SWOS_RENDER_MAX_COMMANDS, camX, camY);
+        swosRenderSortCommands(cmds, cmdCount); // real SWOS behavior: gameSprites.cpp's
+        // own sortDisplaySprites() ascending-Y-sorts every visible sprite before every
+        // draw (see README's own "was this in the original game?" note) -- without this,
+        // commands draw in slot order, so a player nearer the bottom of the pitch (should
+        // draw in front) can be overdrawn by one further up whenever they cross paths.
         int missing = 0;
         for (int i = 0; i < cmdCount; i++)
             if (!cmds[i].imageResolved)
