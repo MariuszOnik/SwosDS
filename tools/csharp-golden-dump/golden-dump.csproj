@@ -33,6 +33,10 @@
     <Compile Include="../../../openswos/game/scripts/SwosVm/PlayerSprite.cs" />
     <Compile Include="../../../openswos/game/scripts/SwosVm/TeamData.cs" />
     <Compile Include="../../../openswos/game/scripts/SwosVm/AnimationTablesData.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/SpriteUpdate.cs" />
+    <!-- PlayerActionsStub.cs (this directory) is auto-included by the SDK;
+         see its header comment for why SpriteUpdate.cs needs a stand-in
+         rather than the real PlayerActions.cs. -->
   </ItemGroup>
 
 </Project>

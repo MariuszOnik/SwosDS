@@ -43,13 +43,14 @@ separate idiomatic-struct pass — not before.
   corresponding OpenSWOS source file changes; never edit their output by
   hand.
 - `tools/csharp-golden-dump/` — a small .NET console harness that compiles
-  OpenSWOS's real `SwosVm` source in place and runs its actual `Memory.Init()`
-  to produce a byte-exact reference dump (see Status: step 2.5 below). Not
+  OpenSWOS's real `SwosVm`/`SpriteUpdate.cs` source in place and runs it
+  (`Memory.Init()`, and representative `SpriteUpdate` scenarios) to produce
+  byte-exact reference output (see Status: step 2.5 / step 3 below). Not
   part of the port itself — verification tooling only.
 - `tests/*.c` — desktop tests (new code, not ports of anything) that
   cross-check the ported layer against the OpenSWOS source, most notably
-  `tests/test_golden_dump.c` (byte-exact comparison against the C# harness's
-  output).
+  `tests/test_golden_dump.c` and `tests/test_sprite_update_golden.c`
+  (byte-exact comparisons against the C# harness's output).
 
 ## Fidelity tags
 
@@ -214,12 +215,53 @@ instruction if the golden files are missing.)
 
 `make test` (three suites): **72/72** pass (26 + 44 + 2).
 
+## Status: step 3 (2026-09-16) — `SpriteUpdate`, differential-tested against real C#
+
+`SpriteUpdate.cs` fully ported (`swos_sprite_update.{h,c}`):
+`CalculateDeltaXAndY` (the direction/trig core every moving sprite uses),
+`UpdateSpriteDirectionAndDeltas`, `MoveAllPlayers`, `SetNextPlayerFrame`
+(including its goal-cheer overlay and the direction-change re-bind with its
+goalie-save/injured-state suppression), `UpdateSpriteAnimation`,
+`MoveSprite`, and the private `StopSpriteIfReachedDestination` /
+`UpdateAnimationTableAndDestinationReached`.
+
+**Forward dependency, handled per the "don't stub missing deps" rule:**
+`SetNextPlayerFrame` and `UpdateAnimationTableAndDestinationReached` call
+`PlayerActions.SetPlayerAnimationTable` — but `PlayerActions.cs` itself is
+step 5. Rather than approximate it, the one self-contained function
+actually needed (only touches Memory/PlayerSprite, both already ported) is
+pulled forward verbatim into `swos_player_actions.{h,c}` — see that
+header's comment. When step 5 ports the rest of `PlayerActions.cs`, extend
+this file rather than re-porting the function into a second copy.
+
+**Differential test against real C#, per review request** (covering
+positive/negative deltas, stopping, and directions):
+`tools/csharp-golden-dump/SpriteUpdateGolden.cs` runs the actual
+`SpriteUpdate.CalculateDeltaXAndY`/`MoveSprite`/`UpdateSpriteAnimation`
+against 14 + 5 + 4 representative scenarios (all 8 movement octants, zero
+movement, zero speed, large/small deltas needing table-halving, overshoot
+vs. non-overshoot stops on both axes, a stationary no-op case, and 4
+animation-opcode fixtures covering plain loop / hold-last / variable-pause
+/ negative relative jump) and dumps inputs+outputs to
+`build/golden/sprite_update_golden.txt`. `tests/test_sprite_update_golden.c`
+parses that file and recomputes the same scenarios via the C port —
+**23/23 match byte-for-byte, first run.** (`CalculateDeltaXAndY` has no
+PC/Amiga branch to test: OpenSWOS hard-locks it to PC mode unconditionally,
+per its own source comment — so unlike `Memory.Init()`, there's no second
+variant here.) Since `SpriteUpdate.cs` calls into `PlayerActions`, the C#
+harness needed a stand-in for compilation — `PlayerActionsStub.cs`, a
+**verbatim** copy of the real `SetPlayerAnimationTable` (diffed
+line-for-line against the source to confirm), not an approximation; delete
+it once step 5 adds the real file to the harness.
+
+`make test` (five suites): **95/95** pass (26 + 44 + 2 + 23).
+
 ## Porting order (full plan)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
 2. ~~Sprite views: `BallSprite`, `PlayerSprite`, `TeamData`~~ (2026-09-15, see Status above)
    - ~~2.5: `AnimationTablesData` + full `Memory.Init()`, golden-dump verified~~ (2026-09-15, see Status above)
-3. `SpriteUpdate`
+3. ~~`SpriteUpdate`~~ (2026-09-16, see Status above)
 4. `BallUpdate`
 5. `PlayerActions`
 6. `PlayerControlled`

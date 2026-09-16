@@ -26,4 +26,6 @@ string amigaPath = Path.Combine(outDir, "golden_amiga.bin");
 File.WriteAllBytes(amigaPath, amigaDump);
 Console.WriteLine($"wrote {amigaDump.Length} bytes to {amigaPath}");
 
+SpriteUpdateGolden.Run(outDir);
+
 return 0;
