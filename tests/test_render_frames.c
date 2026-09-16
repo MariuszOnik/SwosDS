@@ -103,6 +103,12 @@ static void test_known_spot_checks(void) {
     // s_Ref* arrays -- see tools/extract_render_frames.py's classify()).
     CHECK(swosRenderFramesLookup(1279, &info) && info.category == SWOS_RENDER_FRAME_CAT_REFEREE,
           "global 1279 (s_RefWaiting) is categorized as a referee frame");
+    CHECK(info.atlasId == SWOS_RENDER_ATLAS_REFEREE && info.atlasFrame == 6,
+          "global 1279 resolves to the referee atlas, local frame 6 (1279-1273)");
+    CHECK(swosRenderFramesLookup(1273, &info) && info.atlasId == SWOS_RENDER_ATLAS_REFEREE && info.atlasFrame == 0,
+          "global 1273 (first referee frame) resolves to the referee atlas, local frame 0");
+    CHECK(swosRenderFramesLookup(1283, &info) && info.atlasId == SWOS_RENDER_ATLAS_REFEREE && info.atlasFrame == 10,
+          "global 1283 (last referee frame) resolves to the referee atlas, local frame 10");
 
     // "Goal Post Split" (Phase 5 bugfix): global 1205/1206 = the real static
     // goal-frame overlay sprites (kTopGoalSprite/kBottomGoalSprite,

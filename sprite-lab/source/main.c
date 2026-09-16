@@ -21,6 +21,7 @@
 #include "player_atlas_team2_texture.h"
 #include "keeper_atlas_texture.h"
 #include "goal_atlas_texture.h"
+#include "referee_atlas_texture.h"
 #include "ball_atlas_texture.h"
 
 #define WIN_W 480
@@ -55,6 +56,10 @@ extern const unsigned short KEEPER_texcoords[];
 // frames, top goal frame 0 / bottom goal frame 1.
 extern const unsigned short GOAL_texcoords[];
 #define GOAL_ATLAS_FRAME_COUNT 2
+
+// referee_atlas.c's REFEREE_texcoords[] -- 11 frames.
+extern const unsigned short REFEREE_texcoords[];
+#define REFEREE_ATLAS_FRAME_COUNT 11
 
 static const char *categoryName(int cat) {
     switch (cat) {
@@ -118,7 +123,7 @@ static void drawCross(SDL_Renderer *ren, int x, int y, int r) {
 static SDL_Texture *textureAndSrcRectFor(int16_t atlasId, int16_t atlasFrame,
                                           SDL_Texture *texPlayer, SDL_Texture *texPlayerTeam2,
                                           SDL_Texture *texKeeper, SDL_Texture *texGoal,
-                                          SDL_Texture *texBall, SDL_Rect *outSrc) {
+                                          SDL_Texture *texReferee, SDL_Texture *texBall, SDL_Rect *outSrc) {
     const unsigned short *coords = NULL;
     SDL_Texture *tex = NULL;
     if (atlasId == SWOS_RENDER_ATLAS_PLAYER && atlasFrame >= 0 && atlasFrame < PLAYER_ATLAS_FRAME_COUNT) {
@@ -129,6 +134,8 @@ static SDL_Texture *textureAndSrcRectFor(int16_t atlasId, int16_t atlasFrame,
         coords = KEEPER_texcoords; tex = texKeeper;
     } else if (atlasId == SWOS_RENDER_ATLAS_GOAL && atlasFrame >= 0 && atlasFrame < GOAL_ATLAS_FRAME_COUNT) {
         coords = GOAL_texcoords; tex = texGoal;
+    } else if (atlasId == SWOS_RENDER_ATLAS_REFEREE && atlasFrame >= 0 && atlasFrame < REFEREE_ATLAS_FRAME_COUNT) {
+        coords = REFEREE_texcoords; tex = texReferee;
     } else if (atlasId == SWOS_RENDER_ATLAS_BALL && atlasFrame >= 0 && atlasFrame < BALL_ATLAS_FRAME_COUNT) {
         coords = BALL_texcoords; tex = texBall;
     } else {
@@ -186,6 +193,7 @@ int main(int argc, char **argv) {
     SDL_Texture *texPlayerTeam2 = loadGritTexture(ren, player_atlas_team2_textureBitmap, player_atlas_team2_texturePal, 256, 256);
     SDL_Texture *texKeeper = loadGritTexture(ren, keeper_atlas_textureBitmap, keeper_atlas_texturePal, 256, 128);
     SDL_Texture *texGoal = loadGritTexture(ren, goal_atlas_textureBitmap, goal_atlas_texturePal, 128, 64);
+    SDL_Texture *texReferee = loadGritTexture(ren, referee_atlas_textureBitmap, referee_atlas_texturePal, 128, 32);
     SDL_Texture *texBall = loadGritTexture(ren, ball_atlas_textureBitmap, ball_atlas_texturePal, 32, 32);
 
     int32_t index = 341; // first team1 player frame -- a reasonable, always-resolved starting point
@@ -230,7 +238,8 @@ int main(int argc, char **argv) {
         if (resolved && info.atlasId != SWOS_RENDER_ATLAS_NONE) {
             SDL_Rect src;
             SDL_Texture *tex = textureAndSrcRectFor(info.atlasId, info.atlasFrame,
-                                                     texPlayer, texPlayerTeam2, texKeeper, texGoal, texBall, &src);
+                                                     texPlayer, texPlayerTeam2, texKeeper, texGoal,
+                                                     texReferee, texBall, &src);
             if (tex) {
                 hasTexture = true;
                 // Anchor the sprite's real (centerX, centerY) pixel at the
@@ -280,6 +289,7 @@ int main(int argc, char **argv) {
     SDL_DestroyTexture(texPlayerTeam2);
     SDL_DestroyTexture(texKeeper);
     SDL_DestroyTexture(texGoal);
+    SDL_DestroyTexture(texReferee);
     SDL_DestroyTexture(texBall);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);

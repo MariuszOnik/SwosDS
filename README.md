@@ -2345,3 +2345,44 @@ ARM9/BlocksDS (`nds-app/`): clean rebuild, zero warnings. `sdl-debug/` and
 `sprite-lab/`: clean rebuilds, `sprite-lab`'s headless smoke run confirmed
 no crash. Visual confirmation on melonDS/hardware still the user's own next
 step.
+
+### Status: Phase 5 follow-up (2026-09-16) — referee now actually draws
+
+The user asked to wire the referee into the render loop, correctly noting
+its full walking/whistling/carding state machine (`swos_referee.c`,
+`VERIFIED_PC`) was already ticked every frame by `swosGameLoopTick()` and
+already exposed real position/animation accessors
+(`swosReferee{Visible,ImageIndex,WorldX,WorldY,WorldZ}`) -- only the draw
+call was thought to be missing. Checking before wiring anything in found
+one more real gap underneath that, same shape as the earlier goalkeeper
+one: the referee's 11 real animation frames (global 1273-1283, inside
+`BENCH.DAT`'s 1179-1333 catch-all range) never had a pixel texture built,
+so `RENDER_FRAMES[1273..1283].atlasId` was `SWOS_RENDER_ATLAS_NONE` --
+simply adding a `RenderCommand` for the referee without a real atlas would
+have compiled and run but drawn nothing (`imageResolved` stays false), not
+actually fixed anything visible.
+
+New `tools/extract_referee_atlas.py` (same squeezer technique as every
+other atlas this session) packs the 11 real frames (`BENCH.DAT` local index
+94-104) into a 128x32 atlas (4KB -- tiny, real content is only ~1881px).
+`SwosRenderCommand` gained `SWOS_RENDER_KIND_REFEREE`; the new
+`fillRefereeCommand()` in `swos_render_commands.c` is only ever called when
+`swosRefereeVisible()` is true (the referee is off-pitch/invisible most of
+a match -- only activated for a foul/card via `swosRefereeActivate()`),
+same "real VM state gate, not a stub" pattern the player-slot team-number
+filter already uses. `SWOS_RENDER_MAX_COMMANDS` bumped 26 -> 27 (the
+referee slot is the worst case, usually unused). Wired into `nds-app/
+main.c` and `sprite-lab/` exactly like every other atlas.
+
+`make test`: 19/19, including a new dedicated test
+(`test_build_frame_referee_visible`) that pokes `REFSPR_BASE` directly
+(no public "set" accessor exists for the referee -- by design, it's meant
+to be driven only by its own simulation) to confirm the command appears
+with the right position/atlas resolution when active, plus confirming the
+default (inactive) case still emits exactly 26 commands, not 27. New spot
+checks in `test_render_frames.c` for the referee ordinal range. ARM9/
+BlocksDS (`nds-app/`): clean rebuild, zero warnings. `sdl-debug/` and
+`sprite-lab/`: clean rebuilds, `sprite-lab`'s headless smoke run confirmed
+no crash. Visual confirmation on melonDS/hardware (including actually
+triggering a card in a real match to see the referee walk in) still the
+user's own next step.

@@ -5,6 +5,7 @@
 
 #include "swos_ball_sprite.h"
 #include "swos_player_sprite.h"
+#include "swos_referee.h"
 #include "swos_render_frames.h"
 
 void swosRenderWorldToScreen(int32_t worldX, int32_t worldY,
@@ -187,6 +188,28 @@ static void fillGoalCommand(SwosRenderCommand *cmd, bool top,
     cmd->palette = 0;
 }
 
+// Referee: real per-tick simulated position/animation, already ported
+// (swos_referee.c, VERIFIED_PC) and already ticked every frame by
+// swosGameLoopTick() -> swosRefereeUpdateReferee(). Only ever emitted when
+// swosRefereeVisible() is true -- the referee is off-pitch/invisible most
+// of a match (only activated for a foul/card, see swosRefereeActivate),
+// same "real VM state gate, not a stub" pattern as the team-number filter
+// below for player slots.
+static void fillRefereeCommand(SwosRenderCommand *cmd, int32_t cameraX, int32_t cameraY) {
+    cmd->kind = SWOS_RENDER_KIND_REFEREE;
+    cmd->layer = SWOS_RENDER_LAYER_SPRITE;
+    cmd->slot = -1;
+    cmd->globalImageIndex = swosRefereeImageIndex();
+    resolveFrame(cmd);
+    cmd->worldX = swosRefereeWorldX();
+    cmd->worldY = swosRefereeWorldY();
+    cmd->worldZ = swosRefereeWorldZ();
+    swosRenderWorldToScreen(cmd->worldX, cmd->worldY, cameraX, cameraY, &cmd->screenX, &cmd->screenY);
+    cmd->sortKey = swosRenderSortKeyForWorldY(cmd->worldY);
+    cmd->team = 0;
+    cmd->palette = 0;
+}
+
 static void fillPlayerCommand(SwosRenderCommand *cmd, int slot,
                                int32_t cameraX, int32_t cameraY) {
     cmd->kind = SWOS_RENDER_KIND_PLAYER;
@@ -231,6 +254,11 @@ int swosRenderBuildFrame(SwosRenderCommand *outCommands, int maxCommands,
         if (count >= maxCommands)
             break;
         fillPlayerCommand(&outCommands[count], slot, cameraX, cameraY);
+        count++;
+    }
+
+    if (count < maxCommands && swosRefereeVisible()) {
+        fillRefereeCommand(&outCommands[count], cameraX, cameraY);
         count++;
     }
 

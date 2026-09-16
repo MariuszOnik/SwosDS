@@ -8,6 +8,7 @@
 #include "swos_ball_sprite.h"
 #include "swos_memory.h"
 #include "swos_player_sprite.h"
+#include "swos_referee.h"
 #include "swos_render_commands.h"
 #include "swos_render_frames.h"
 
@@ -133,14 +134,17 @@ static void test_build_frame(void) {
     // (PlayerSprite.Init() already assigns all 22 slots a valid team 1/2,
     // not team 0 -- confirmed empirically, not assumed), so
     // swosRenderBuildFrame's team-number filter doesn't skip anyone here:
-    // shadow + ball + 2 goal frames + all 22 players = 26, exactly
-    // SWOS_RENDER_MAX_COMMANDS.
+    // shadow + ball + 2 goal frames + all 22 players = 26. NOT
+    // SWOS_RENDER_MAX_COMMANDS (27) -- that also budgets for the referee,
+    // which stays absent here (swosRefereeVisible() is false right after a
+    // fresh swosMemoryInit(), see test_build_frame_referee_visible below
+    // for the case where it's active).
 
     SwosRenderCommand cmds[SWOS_RENDER_MAX_COMMANDS];
     int count = swosRenderBuildFrame(cmds, SWOS_RENDER_MAX_COMMANDS, 50, 60);
 
-    CHECK(count == SWOS_RENDER_MAX_COMMANDS,
-          "build frame: shadow + ball + 2 goal frames + all 22 default-initialized players");
+    CHECK(count == 26,
+          "build frame: shadow + ball + 2 goal frames + all 22 default-initialized players (referee inactive)");
 
     CHECK(cmds[0].kind == SWOS_RENDER_KIND_BALL_SHADOW && cmds[0].layer == SWOS_RENDER_LAYER_SHADOW,
           "build frame: command 0 is the ball's shadow");
@@ -206,6 +210,37 @@ static void test_build_frame(void) {
     CHECK(smallCount == 2, "build frame: respects a caller-supplied maxCommands cap");
 }
 
+// Referee wiring: swosRenderBuildFrame() only emits a referee command when
+// swosRefereeVisible() is true (real VM state, gated the same way the
+// player-slot team-number filter gates player commands) -- confirmed above
+// that a fresh Memory leaves it absent; this confirms the opposite case,
+// poking REFSPR_BASE directly the same way other tests poke raw Memory
+// state (no public "set" accessor exists for the referee -- it's meant to
+// be driven by swosRefereeActivate()/swosRefereeUpdateReferee() only, this
+// is test-only low-level access).
+static void test_build_frame_referee_visible(void) {
+    swosMemoryInit(true);
+
+    swosWriteWord(REFSPR_BASE + PLSPR_OFF_VISIBLE, 1);
+    swosWriteWord(REFSPR_BASE + PLSPR_OFF_IMAGE_INDEX, 1279);
+    swosWriteDword(REFSPR_BASE + PLSPR_OFF_X, (uint32_t)(250 << 16));
+    swosWriteDword(REFSPR_BASE + PLSPR_OFF_Y, (uint32_t)(450 << 16));
+
+    SwosRenderCommand cmds[SWOS_RENDER_MAX_COMMANDS];
+    int count = swosRenderBuildFrame(cmds, SWOS_RENDER_MAX_COMMANDS, 0, 0);
+    CHECK(count == 27, "build frame: referee command appears when swosRefereeVisible() is true");
+
+    const SwosRenderCommand *ref = NULL;
+    for (int i = 0; i < count; i++)
+        if (cmds[i].kind == SWOS_RENDER_KIND_REFEREE) ref = &cmds[i];
+    CHECK(ref != NULL, "build frame: a SWOS_RENDER_KIND_REFEREE command is present");
+    if (ref) {
+        CHECK(ref->worldX == 250 && ref->worldY == 450, "build frame: referee world position matches what was seeded");
+        CHECK(ref->imageResolved && ref->atlasId == SWOS_RENDER_ATLAS_REFEREE && ref->atlasFrame == 6,
+              "build frame: referee image 1279 resolves to the referee atlas, local frame 6 (1279-1273)");
+    }
+}
+
 int main(void) {
     test_world_to_screen();
     test_sort_key();
@@ -213,6 +248,7 @@ int main(void) {
     test_sort_commands_edge_cases();
     test_sort_commands_layer_beats_sortkey();
     test_build_frame();
+    test_build_frame_referee_visible();
 
     if (g_failures) {
         printf("\n%d check(s) FAILED\n", g_failures);

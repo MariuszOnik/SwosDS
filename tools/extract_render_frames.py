@@ -65,6 +65,12 @@ overlay sprites (global 1205 top / 1206 bottom, inside BENCH.DAT's
 1179-1333 catch-all range -- see tools/extract_goal_atlas.py's own module
 docstring for why no separate foreground/background layer was needed, only
 these two ordinary Y-sortable sprites at a fixed real position).
+
+REFEREE addendum (2026-09-16): tools/extract_referee_atlas.py built an
+11-frame texture for the referee's real animation frames (global
+1273-1283, also inside BENCH.DAT's catch-all range) -- the referee's own
+simulation (swos_referee.c) and position/animation accessors already
+existed; only the pixel texture and the RenderCommand wiring were missing.
 """
 import re
 import struct
@@ -97,6 +103,7 @@ ATLAS_BALL = 1         # nds-app/graphics/ball_atlas_texture.png, 5 frames, glob
 ATLAS_PLAYER_TEAM2 = 2 # nds-app/graphics/player_atlas_team2_texture.png (Phase 4), 101 frames, global 644-744 (away)
 ATLAS_KEEPER = 3       # nds-app/graphics/keeper_atlas_texture.png (Phase 5), 116 frames, global 947-1062 (team1) / 1063-1178 (team2, same physical sprites)
 ATLAS_GOAL = 4          # nds-app/graphics/goal_atlas_texture.png (Phase 5 bugfix, "Goal Post Split"), 2 frames, global 1205 (top) / 1206 (bottom)
+ATLAS_REFEREE = 5       # nds-app/graphics/referee_atlas_texture.png, 11 frames, global 1273-1283
 
 
 def parse_dat(path, start_ordinal, expect_count=None):
@@ -230,6 +237,8 @@ def atlas_for(ordinal):
         return ATLAS_GOAL, 0  # top goal frame (kTopGoalSprite)
     if ordinal == 1206:
         return ATLAS_GOAL, 1  # bottom goal frame (kBottomGoalSprite)
+    if 1273 <= ordinal <= 1283:
+        return ATLAS_REFEREE, ordinal - 1273
     return ATLAS_NONE, -1
 
 
