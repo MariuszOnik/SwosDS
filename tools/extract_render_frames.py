@@ -43,6 +43,11 @@ Usage:
     python tools/extract_render_frames.py [gog_dir] > /dev/null
 (writes directly to include/generated/swos_render_frames_data.h; gog_dir
 defaults to this machine's known GOG install path.)
+
+PHASE 4 addendum (2026-09-16): tools/extract_team2_atlas.py built a second
+real pixel texture (nds-app/graphics/player_atlas_team2_texture.png,
+global 644-744, reusing this exact atlas layout) -- atlas_for() below now
+maps that range to ATLAS_PLAYER_TEAM2 instead of ATLAS_NONE.
 """
 import re
 import struct
@@ -68,10 +73,11 @@ CAT_BALL = 6
 CAT_REFEREE = 7
 CAT_BENCH_OTHER = 8
 
-# atlasId values -- MUST match SWOS_RENDER_ATLAS_* in swos_render_commands.h.
-ATLAS_NONE = -1     # geometry known, no pixel texture built yet (Phase 3 scope)
-ATLAS_PLAYER = 0    # nds-app/source/player_atlas.png, 101 frames, global 341-441
-ATLAS_BALL = 1       # nds-app/source/ball_atlas.png, 5 frames, global 1179-1183
+# atlasId values -- MUST match SWOS_RENDER_ATLAS_* in swos_render_frames.h.
+ATLAS_NONE = -1        # geometry known, no pixel texture built yet
+ATLAS_PLAYER = 0       # nds-app/graphics/player_atlas_texture.png, 101 frames, global 341-441 (home)
+ATLAS_BALL = 1         # nds-app/graphics/ball_atlas_texture.png, 5 frames, global 1179-1183
+ATLAS_PLAYER_TEAM2 = 2 # nds-app/graphics/player_atlas_team2_texture.png (Phase 4), 101 frames, global 644-744 (away)
 
 
 def parse_dat(path, start_ordinal, expect_count=None):
@@ -193,6 +199,8 @@ def classify(ordinal):
 def atlas_for(ordinal):
     if 341 <= ordinal <= 441:
         return ATLAS_PLAYER, ordinal - 341
+    if 644 <= ordinal <= 744:
+        return ATLAS_PLAYER_TEAM2, ordinal - 644
     if 1179 <= ordinal <= 1183:
         return ATLAS_BALL, ordinal - 1179
     return ATLAS_NONE, -1

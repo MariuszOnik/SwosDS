@@ -1993,3 +1993,87 @@ the DS's 4 MB). Separate commit — mapping data and lookup API only, still
 no renderer wiring (unchanged from Phase 2's own boundary) and no new
 pixel-atlas textures (that remains explicitly out of scope, per the
 user's own choice when this phase's scope was confirmed up front).
+
+## Status: Phase 4 (2026-09-16) — renderer driven by real VM animation state
+
+**Bounded addition first:** Phase 3 deliberately scoped out new pixel
+extraction, but that left the away team (global 644-744) with no texture
+at all -- every away-team sprite would have rendered as nothing. Before
+touching the renderer, extended the SAME already-proven technique (not the
+deferred full pipeline) one step: `tools/extract_team2_atlas.py` decodes
+`TEAM2.DAT`'s own 101 sprites (its own headers self-declare ordinals
+644-946 -- see `tools/extract_render_frames.py`'s module docstring) and
+pastes them into a second 256x256 canvas at the EXACT SAME `(x,y,w,h)`
+slots `PLAYER_texcoords[]` already describes (`TEAM1.DAT`/`TEAM2.DAT` share
+identical per-frame geometry, only the kit pixel pattern differs -- no new
+packing pass needed). `tools/extract_render_frames.py` gained a matching
+`SWOS_RENDER_ATLAS_PLAYER_TEAM2` id. Goalkeepers/referee/bench and every
+tackle/header/injury/celebration frame beyond these two 101-frame atlases
+are still `SWOS_RENDER_ATLAS_NONE`, unchanged from Phase 3 -- that remains
+future work.
+
+**1. Sprite laboratory (SDL), built first, per the plan's own ordering:**
+new standalone tool `sprite-lab/` (own `Makefile`, no VM/gameplay at all --
+it never calls `swosMemoryInit`, it only browses the fixed `RENDER_FRAMES`
+table). Steps through global image indices one at a time (Left/Right),
+filters by category (Up/Down), toggles "only indices the real VM can
+actually produce" (Tab, using the same `RENDER_FRAMES_USED_INDICES` the
+Phase 3 completeness test uses), draws the real pixels (when a texture
+exists) from the exact same grit-converted bitmap+palette data the DS
+build ships (`sprite-lab/source/grit_texture.c`, a from-scratch decoder for
+that format since no SDL_image is available on this machine), anchored so
+`RENDER_FRAMES`' real `centerX/centerY` lands on a fixed on-screen
+reference point with a cross drawn there -- a wrong anchor would visibly
+make the sprite float away from the cross as frames step. An unresolved
+index draws an explicit dashed placeholder box (sized to its real, known
+geometry) instead of nothing or a substitute. Launches and resolves
+correctly (confirmed by running it headlessly and checking its console
+output); full pixel-level visual correctness needs an actual look, which
+only the user can do interactively.
+
+**2. `nds-app/source/main.c` rewritten to use the same `RenderCommand`
+pipeline, replacing the hand animator entirely** (plan's own instruction:
+`playerAnimGetFrame()`, `s_animTick[]`, and the direction/isMoving-driven
+standing/running choice are GONE, along with the now-dead
+`player_anim.{c,h}`/`player_frame_centers.{c,h}` files -- deleted, not left
+unused). The per-tick draw loop is now: one `swosRenderBuildFrame()` call
+(real ball+shadow+22-player positions/images off the current `Memory`
+state) → for each command, if `imageResolved`, bind whichever atlas its
+`atlasId` names (home player / away player / ball) and `glSprite()` at
+`screenX - anchorX, screenY - anchorY` (the ball additionally lifts by its
+real `worldZ`, replacing the old hardcoded `BALL_HALF_SIZE` offset with a
+real per-frame anchor too) -- otherwise skip the sprite entirely (the
+`MISSING IMAGE` log already fires inside `swosRenderFramesLookup`, so
+nothing is silently drawn wrong). The on-screen HUD now also reports
+"N/M sprites resolved" per frame.
+
+**Criteria, addressed as designed (not yet visually confirmed on real
+hardware/melonDS -- see below):**
+- throw-ins: real animation, both teams now (`s_ThrowInReady1*`/
+  `s_ThrowInReady2*`'s indices all fall inside the two 101-frame atlases).
+- tackles/headers/goalkeepers no longer turn into standing/running --
+  structurally impossible now: a command either draws its real resolved
+  frame or is skipped, there is no third "fall back to standing" path left
+  anywhere in this renderer. Goalkeepers specifically are still invisible
+  (no atlas texture yet), which is honest and logged, not a wrong
+  animation.
+- running no longer jumps relative to the foot point: anchors come from
+  `RENDER_FRAMES`, real per-frame sprite-header data, keyed by the ACTUAL
+  `imageIndex` the real, already-ported `SpriteUpdate`/`PlayerActions`
+  animation system chose that tick -- not a heuristic reconstruction of
+  "which frame direction+tick+moving probably means".
+
+`make test`: 19/19 (unaffected -- this phase touches only the DS adapter
+and the two new desktop-only tools, no `src`/`include` VM logic). ARM9/
+BlocksDS (`nds-app/`), `sdl-debug/`, and the new `sprite-lab/`: all three
+clean rebuilds, zero warnings (grit's own generated code prints a handful
+of "visibility attribute not supported" notes on this host compiler,
+unrelated to any of this session's changes). Separate commit.
+
+**Not done in this phase, honestly flagged rather than silently skipped:**
+actual visual confirmation on melonDS/hardware (the user's own next step --
+this environment has no DS emulator, see the earlier `feedback_host_gcc_
+devkitpro_mingw64` situation); goalkeeper/referee/bench pixel extraction
+(still the same deferred, larger follow-up from Phase 3); the sprite lab's
+own visual correctness is inferred from using verified real data + a
+headless smoke run, not an actual look.

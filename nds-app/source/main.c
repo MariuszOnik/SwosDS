@@ -9,6 +9,20 @@
 // Rendering pattern and graphics assets are copied from
 // ../../swos-ds/source/main.c (a proven, working BlocksDS/GL2D setup) --
 // swos-ds itself is untouched. Its OWN gameplay code is not used here.
+//
+// PHASE 4 (2026-09-16 -- see ../../README.md "Status: Phase 4"): the old
+// hand-rolled running/standing animator (playerAnimGetFrame()/s_animTick[],
+// direction+tick driven, no real VM state at all) is GONE. Every sprite
+// drawn below comes from ONE call to swosRenderBuildFrame() (Phase 2's
+// portable RenderCommand layer) per frame -- the exact same function the
+// sprite laboratory (../../sprite-lab) uses to verify frame/anchor
+// resolution, so this loop and that tool are provably consuming identical
+// decisions, never picking animations separately. A command whose
+// imageResolved is false (most goalkeeper/referee/bench/tackle/header/
+// injury/celebration frames today -- see swos_render_frames.h's own
+// scope note) is skipped rather than drawn with a wrong or substituted
+// frame; swosRenderFramesLookup() already logs an explicit "MISSING IMAGE"
+// line for it (this repo's console, via consoleDemoInit below).
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,11 +31,10 @@
 #include <nds.h>
 
 #include "match_bootstrap.h"
-#include "player_anim.h"
 
 #include "player_atlas.h"
 #include "player_atlas_texture.h"
-#include "player_frame_centers.h"
+#include "player_atlas_team2_texture.h"
 #include "ball_atlas.h"
 #include "ball_atlas_texture.h"
 #include "pitch_map.h"
@@ -31,13 +44,14 @@
 #include "swos_game_loop.h"
 #include "swos_memory.h"
 #include "swos_player_sprite.h"
+#include "swos_render_commands.h"
+#include "swos_render_frames.h"
 
 #define SCREEN_W 256
 #define SCREEN_H 192
 #define WORLD_W  672
 #define WORLD_H  880  // VM/gameplay coordinate range is y=0..879.
 #define PITCH_BITMAP_WORLD_Y 16 // PITCH*.DAT row 0 represents VM world y=16.
-#define BALL_HALF_SIZE 2
 
 // DS-adapter-only camera: an 8x-lerp follow-the-ball scroll, clamped to the
 // pitch bounds. Deliberately NOT using the ported swos_camera.c's own
@@ -50,8 +64,10 @@
 // its state just isn't used for the on-screen scroll offset.
 typedef struct { int32_t x, y; } Camera;
 
-static glImage playerSprites[PLAYER_NUM_IMAGES], ballSprites[BALL_NUM_IMAGES], pitchTiles[256];
-static int s_animTick[PLSPR_TOTAL_SLOTS];
+static glImage playerSprites[PLAYER_NUM_IMAGES];       // home team (global 341-441)
+static glImage playerSpritesTeam2[PLAYER_NUM_IMAGES];  // away team (global 644-744, Phase 4's own extraction)
+static glImage ballSprites[BALL_NUM_IMAGES];
+static glImage pitchTiles[256];
 
 static void cameraUpdate(Camera *c, int followX, int followY)
 {
@@ -85,6 +101,27 @@ static void drawPitch(int cx, int cy)
         }
 }
 
+// The ONE place this adapter turns a resolved SwosRenderCommand into a
+// glSprite() call -- picks which of the (up to) three loaded atlases to
+// bind based on cmd->atlasId (SWOS_RENDER_ATLAS_*, see swos_render_frames.h),
+// never re-deriving a frame index from direction/tick/imageIndex itself.
+static void drawResolvedCommand(const SwosRenderCommand *cmd)
+{
+    glImage *sheet;
+    switch (cmd->atlasId)
+    {
+        case SWOS_RENDER_ATLAS_PLAYER:       sheet = playerSprites; break;
+        case SWOS_RENDER_ATLAS_PLAYER_TEAM2: sheet = playerSpritesTeam2; break;
+        case SWOS_RENDER_ATLAS_BALL:         sheet = ballSprites; break;
+        default: return; // SWOS_RENDER_ATLAS_NONE -- imageResolved is already false for this, caller filters it out
+    }
+    int drawX = cmd->screenX - cmd->anchorX;
+    int drawY = cmd->screenY - cmd->anchorY;
+    if (cmd->kind == SWOS_RENDER_KIND_BALL)
+        drawY -= cmd->worldZ; // height lift -- shadow (worldZ always 0) stays on the ground
+    glSprite(drawX, drawY, GL_FLIP_NONE, &sheet[cmd->atlasFrame]);
+}
+
 int main(int argc, char **argv)
 {
     consoleDemoInit();
@@ -98,6 +135,10 @@ int main(int argc, char **argv)
                      GL_RGB256, 256, 256,
                      TEXGEN_TEXCOORD | GL_TEXTURE_COLOR0_TRANSPARENT, 256,
                      player_atlas_texturePal, player_atlas_textureBitmap);
+    glLoadSpriteSet(playerSpritesTeam2, PLAYER_NUM_IMAGES, PLAYER_texcoords,
+                     GL_RGB256, 256, 256,
+                     TEXGEN_TEXCOORD | GL_TEXTURE_COLOR0_TRANSPARENT, 256,
+                     player_atlas_team2_texturePal, player_atlas_team2_textureBitmap);
     glLoadSpriteSet(ballSprites, BALL_NUM_IMAGES, BALL_texcoords,
                      GL_RGB256, 32, 32,
                      TEXGEN_TEXCOORD | GL_TEXTURE_COLOR0_TRANSPARENT, 256,
@@ -131,41 +172,26 @@ int main(int argc, char **argv)
         cameraUpdate(&camera, ballX, ballY);
         int camX = f32toint(camera.x), camY = f32toint(camera.y);
 
+        SwosRenderCommand cmds[SWOS_RENDER_MAX_COMMANDS];
+        int cmdCount = swosRenderBuildFrame(cmds, SWOS_RENDER_MAX_COMMANDS, camX, camY);
+        int missing = 0;
+        for (int i = 0; i < cmdCount; i++)
+            if (!cmds[i].imageResolved)
+                missing++;
+
         consoleClear();
-        printf("swos-vm-c DS adapter (step 12)\n"
+        printf("swos-vm-c DS adapter (step 12, Phase 4 renderer)\n"
                "AI vs AI -- mechanical VM port\n"
-               "ball %d,%d z%d\n"
+               "ball %d,%d z%d  sprites %d/%d resolved\n"
                "START to exit",
-               ballX, ballY, ballZ);
+               ballX, ballY, ballZ, cmdCount - missing, cmdCount);
 
         glBegin2D();
         drawPitch(camX, camY);
 
-        glSprite(ballX - camX - BALL_HALF_SIZE, ballY - camY - BALL_HALF_SIZE,
-                 GL_FLIP_NONE, &ballSprites[BALL_shadow_png]);
-        glSprite(ballX - camX - BALL_HALF_SIZE, ballY - ballZ - camY - BALL_HALF_SIZE,
-                 GL_FLIP_NONE, &ballSprites[0]);
-
-        for (int slot = 0; slot < PLSPR_TOTAL_SLOTS; slot++)
-        {
-            int16_t teamNumber = swosPlayerSpriteTeamNumber(slot);
-            if (teamNumber != 1 && teamNumber != 2)
-                continue;
-
-            int spriteAddr = swosPlayerSpriteBase(slot);
-            int px = swosPlayerSpriteXPixels(slot);
-            int py = swosPlayerSpriteYPixels(slot);
-            int dir = swosPlayerSpriteDirection(slot);
-            bool moving = swosReadSignedWord(spriteAddr + PLSPR_OFF_IS_MOVING) != 0;
-
-            if (moving)
-                s_animTick[slot]++;
-            int frame = playerAnimGetFrame(dir, s_animTick[slot], moving);
-
-            glSprite(px - camX - PLAYER_FRAME_CENTER_X[frame],
-                     py - camY - PLAYER_FRAME_CENTER_Y[frame],
-                     GL_FLIP_NONE, &playerSprites[frame]);
-        }
+        for (int i = 0; i < cmdCount; i++)
+            if (cmds[i].imageResolved)
+                drawResolvedCommand(&cmds[i]);
 
         glEnd2D();
         glFlush(0);

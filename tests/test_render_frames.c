@@ -60,6 +60,19 @@ static void test_known_spot_checks(void) {
     CHECK(info.atlasId == SWOS_RENDER_ATLAS_PLAYER && info.atlasFrame == 0,
           "global 341 resolves to the player atlas, local frame 0");
 
+    // PHASE 4: global 644 = TEAM2.DAT's own sprite 0 (self-declares ordinal
+    // 644 in its own header, see tools/extract_render_frames.py's module
+    // docstring) -- now resolves to the second real atlas
+    // (tools/extract_team2_atlas.py), same local frame numbering as team1.
+    SwosRenderFrameInfo t1, t2;
+    CHECK(swosRenderFramesLookup(341, &t1) && swosRenderFramesLookup(644, &t2) &&
+          t1.centerX == t2.centerX && t1.centerY == t2.centerY &&
+          t1.width == t2.width && t1.height == t2.height,
+          "team1/team2 outfield-player geometry matches at corresponding local frame 0 (same character pose, different kit pixels)");
+    CHECK(t2.category == SWOS_RENDER_FRAME_CAT_PLAYER_TEAM2 &&
+          t2.atlasId == SWOS_RENDER_ATLAS_PLAYER_TEAM2 && t2.atlasFrame == 0,
+          "global 644 resolves to the team2 player atlas, local frame 0");
+
     // Global 947 = GOAL1.DAT's first sprite (team1 main goalkeeper).
     CHECK(swosRenderFramesLookup(947, &info) && info.category == SWOS_RENDER_FRAME_CAT_KEEPER_TEAM1,
           "global 947 is categorized as a team1 keeper frame");
