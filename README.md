@@ -1922,3 +1922,74 @@ briefly had.
 both clean rebuilds, zero warnings, `swos_render_commands.c` compiled and
 linked into both (not yet called from either's `main()` — see above).
 Separate commit, no gameplay/Memory changes, no renderer wiring.
+
+## Status: Phase 3 (2026-09-16) — full `RENDER_FRAMES[1334]` atlas mapping
+
+Before writing any generator, spent the investigation up front finding the
+real source of truth rather than guessing: `swos-port/docs/SWOS/sprites.txt`
+documents SWOS's own 24-byte sprite header format and the exact global
+ordinal ranges every `.DAT` file supplies (`sprite.dat`'s own directory:
+227 charset + 114 score + 303+303 team + 116+116 goalkeeper (mirrored) +
+155 bench = 1334 total, confirmed to the byte against the real files, not
+assumed from the doc alone), `openswos/tools/sprite-anchors-extract`
+demonstrates the same header parse in C# (didn't build on this machine's
+.NET 8 SDK — its project targets .NET 9 — so reimplemented the same
+trivial, well-documented format in Python rather than fighting an SDK
+install), and `../../swos-ds/tools/extract_player_frames.py`/
+`extract_ball_frames.py` (the tools that built the two atlas textures that
+already exist) confirmed exactly which 106 of the 1334 global indices have
+real pixel textures today (341-441 the player atlas, 1179-1183 the ball
+atlas). `include/generated/swos_anim_streams.h` (the VM's real, already-
+ported animation-table data, mechanically extracted from
+`AnimationTablesData.cs` in an earlier step) gave the actual domain of
+indices the ported VM can produce — 263 of 1334, spanning 341..1283 — for
+the completeness test.
+
+**Offline generator:** `tools/extract_render_frames.py`. Reads the real
+header (width/height/centerX/centerY) out of the user's own GOG
+`CHARSET.DAT`/`SCORE.DAT`/`TEAM1.DAT`/`TEAM2.DAT`/`GOAL1.DAT`/`BENCH.DAT`,
+cross-checks `TEAM1.DAT` against `TEAM3.DAT` at several offsets to confirm
+kit-pattern files share identical geometry (only pixels differ), asserts
+every file's sprite count and byte-consumption exactly (refuses to guess
+on a mismatch), mirrors `GOAL1.DAT`'s 116 real sprites onto 1063-1178 for
+team2's goalkeepers (the same physical sprites reused for the other side,
+per `sprites.txt`), and parses `swos_anim_streams.h` for the completeness-
+test index set. Emits `include/generated/swos_render_frames_data.h` — a
+`RENDER_FRAMES[1334]` table (every entry real, none invented) plus the
+mechanically-derived `RENDER_FRAMES_USED_INDICES[]`. Not runnable in CI
+(needs the user's local GOG install path) — regenerate with
+`python tools/extract_render_frames.py` when the source `.DAT` files or
+`swos_anim_streams.h` change.
+
+**New API:** `include/swos_render_frames.h`/`src/swos_render_frames.c` —
+`swosRenderFramesLookup(globalImageIndex, &info)` is now the ONE place a
+global index resolves to geometry/anchor/atlas reference; no scattered
+`imageIndex - 341` arithmetic anywhere (the plan's explicit rule).
+`SwosRenderFrameInfo.valid` distinguishes "no real sprite at all" from
+`atlasId == SWOS_RENDER_ATLAS_NONE` ("real sprite, real anchor point, no
+pixel texture built yet" — true for ~1228 of the 1334 entries today:
+goalkeepers, referee, bench, and every tackle/header/injury/celebration
+frame beyond the current 101-frame player atlas). A failed lookup prints
+an explicit `MISSING IMAGE` line — never a silent standing-frame
+substitute. `swos_render_commands.c` (Phase 2) now calls this instead of
+its old temporary shift, and also fixed a real Phase-2 bug this surfaced:
+the ball-shadow command was reusing the BALL's own `imageIndex` instead of
+the shadow's real, distinct global index (1183, a single fixed sprite, not
+a VM-tracked field at all) — harmless at the time (atlas resolution wasn't
+implemented yet) but wrong once it mattered.
+
+**Tests:** `tests/test_render_frames.c` (new suite, `make test` now 19)
+covers exactly what the plan asked for — every one of the 1334 anchor
+points verified against `sprites.txt`'s own documented valid range (cx
+-8..34, cy 0..27), known spot-checks (the "stand N" pose at 341, the
+goalkeeper mirror between 947 and 1063, both ball atlas frames, a referee
+frame), out-of-range rejection, and the completeness check: every one of
+the 263 real used indices resolves to a valid `RENDER_FRAMES` entry. All
+pass.
+
+`make test`: 19/19 suites. ARM9/BlocksDS (`nds-app/`) and `sdl-debug/`:
+both clean rebuilds, zero warnings (the ~19 KB table is negligible against
+the DS's 4 MB). Separate commit — mapping data and lookup API only, still
+no renderer wiring (unchanged from Phase 2's own boundary) and no new
+pixel-atlas textures (that remains explicitly out of scope, per the
+user's own choice when this phase's scope was confirmed up front).

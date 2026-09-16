@@ -1,9 +1,12 @@
-// PHASE 2 (RenderCommand layer, 2026-09-16 -- see README.md "Status: Phase 2"
-// and the top-level plan this session is following). Portable module with
-// NO SDL/libnds dependency -- only the already-portable VM headers
-// (swos_ball_sprite.h/swos_player_sprite.h, pure read accessors). Builds on
-// desktop (this repo's normal `make test` host) and on ARM (nds-app's
-// BlocksDS build, which globs `../src` automatically).
+// PHASE 2 (RenderCommand layer) + PHASE 3 (full atlas mapping), 2026-09-16
+// -- see README.md "Status: Phase 2"/"Status: Phase 3" and the top-level
+// plan this session is following. Portable module with NO SDL/libnds
+// dependency -- only the already-portable VM headers
+// (swos_ball_sprite.h/swos_player_sprite.h, pure read accessors) and
+// swos_render_frames.h (also portable -- a generated data table + a pure
+// lookup function). Builds on desktop (this repo's normal `make test`
+// host) and on ARM (nds-app's BlocksDS build, which globs `../src`
+// automatically).
 //
 // Purpose: read a VM Memory snapshot and produce an ordered list of
 // RenderCommand values -- ball, shadow, all 22 players -- so that EVERY
@@ -19,18 +22,17 @@
 //     module and still owns its own frame choice for now; Phase 4 is where
 //     the DS adapter switches to reading real VM animation state instead.
 //
-// Atlas/frame resolution is DELIBERATELY MINIMAL in this phase: only the
-// documented `local = global - 341` shift (nds-app/source/player_anim.h's
-// own header comment, describing the CURRENT 101-frame player atlas) is
-// applied, and only when the raw imageIndex falls in that atlas's known
-// range. Anything else is reported as UNRESOLVED (see
-// SwosRenderCommand.imageResolved) rather than silently drawing a standing
-// frame -- Phase 3 replaces this shift with a real, complete
-// RENDER_FRAMES[] table covering every global image index (goalkeepers,
-// ball-out, slide tackles, headers, injuries, celebrations, ...) and MUST
-// use the same "explicit MISSING marker, never a silent substitute" rule.
-// Per-frame anchor points are also Phase 3's job (its own table carries
-// centerX/centerY per entry) -- anchorX/anchorY here are 0 until then.
+// Atlas/frame/anchor resolution goes through swos_render_frames.h's
+// swosRenderFramesLookup() -- the ONE place a global image index turns
+// into geometry, never scattered `imageIndex - 341`-style arithmetic in
+// this file. Real anchor points (centerX/centerY) and real geometry are
+// known for all 1334 global indices (real data from the user's GOG .DAT
+// files); an actual pixel TEXTURE only exists for the ~106 indices Phase 3
+// found already extracted (the 101-frame player atlas, the 5-frame ball
+// atlas) -- see SwosRenderCommand.imageResolved's own comment for how that
+// distinction surfaces here. Anything genuinely unmapped logs an explicit
+// "MISSING IMAGE" line (inside swosRenderFramesLookup) rather than
+// silently drawing a standing frame.
 #pragma once
 
 #include <stdbool.h>
@@ -75,7 +77,17 @@ typedef struct {
     // imageResolved is false.
     int16_t atlasId;
     int16_t atlasFrame;
-    bool imageResolved; // false => no known mapping for globalImageIndex; caller must show an explicit "MISSING IMAGE" marker, never silently substitute a standing frame
+    // false in TWO distinct cases, both handled the same way by a renderer
+    // (nothing to draw, never a silent standing-frame substitute):
+    //   1. globalImageIndex has no real sprite at all (genuinely invalid --
+    //      swos_render_frames.h's swosRenderFramesLookup() already logged
+    //      an explicit "MISSING IMAGE" line for this case);
+    //   2. it IS a real, valid SWOS sprite (real anchorX/anchorY below) but
+    //      Phase 3 only mapped its geometry, not a pixel texture -- most
+    //      goalkeeper/referee/bench/tackle/header/injury/celebration frames
+    //      today (see swos_render_frames.h's SWOS_RENDER_ATLAS_NONE).
+    // atlasId/atlasFrame are only meaningful when this is true.
+    bool imageResolved;
 
     // World-space position, whole pixels (same convention as
     // swosPlayerSpriteXPixels()/swosBallSpriteXPixels() -- Q16.16 truncated
@@ -90,8 +102,12 @@ typedef struct {
     // never for its shadow).
     int32_t screenX, screenY;
 
-    // Sprite-local pivot offset (where the anchor point sits within the
-    // atlas frame's bitmap), 0 until Phase 3's RENDER_FRAMES table lands.
+    // Sprite-local pivot offset -- the real anchor point (sprites.txt's
+    // "x center"/"y center", the same point the original engine's ball
+    // bounces off / draws the sprite anchored at) from
+    // RENDER_FRAMES[globalImageIndex], regardless of whether a pixel
+    // texture exists yet for this frame (0,0 only when the lookup itself
+    // failed -- see imageResolved).
     int16_t anchorX, anchorY;
 
     // Depth-sort key. This phase uses plain worldY (see
