@@ -1,0 +1,173 @@
+// PHASE 2 (RenderCommand layer) tests. New code, not a port of anything --
+// covers the two functions the plan explicitly calls out ("world->screen"
+// and "sorting") plus a full swosRenderBuildFrame() pass against a
+// synthetic Memory snapshot, matching this repo's usual "seed a minimal
+// state, call the real function, assert the result" pattern.
+#include <stdio.h>
+
+#include "swos_ball_sprite.h"
+#include "swos_memory.h"
+#include "swos_player_sprite.h"
+#include "swos_render_commands.h"
+
+static int g_failures = 0;
+
+#define CHECK(cond, msg) \
+    do { \
+        if (!(cond)) { \
+            printf("FAIL: %s (%s:%d)\n", msg, __FILE__, __LINE__); \
+            g_failures++; \
+        } else { \
+            printf("ok:   %s\n", msg); \
+        } \
+    } while (0)
+
+static void test_world_to_screen(void) {
+    int32_t sx, sy;
+
+    swosRenderWorldToScreen(336, 449, 0, 0, &sx, &sy);
+    CHECK(sx == 336 && sy == 449, "world->screen: zero camera is identity");
+
+    swosRenderWorldToScreen(336, 449, 100, 50, &sx, &sy);
+    CHECK(sx == 236 && sy == 399, "world->screen: subtracts camera offset");
+
+    swosRenderWorldToScreen(50, 60, 100, 100, &sx, &sy);
+    CHECK(sx == -50 && sy == -40, "world->screen: goes negative off the left/top edge (caller's job to cull)");
+
+    swosRenderWorldToScreen(0, 0, -20, -30, &sx, &sy);
+    CHECK(sx == 20 && sy == 30, "world->screen: negative camera pans the other way");
+}
+
+static void test_sort_key(void) {
+    CHECK(swosRenderSortKeyForWorldY(449) == 449, "sort key is identity on worldY this phase");
+    CHECK(swosRenderSortKeyForWorldY(-5) == -5, "sort key passes through negative worldY unchanged");
+}
+
+static SwosRenderCommand makeCmd(int32_t sortKey, int slot) {
+    SwosRenderCommand c = {0};
+    c.sortKey = sortKey;
+    c.slot = slot; // used as an identity tag to check stability
+    return c;
+}
+
+static void test_sort_commands_order(void) {
+    SwosRenderCommand cmds[5] = {
+        makeCmd(500, 0),
+        makeCmd(100, 1),
+        makeCmd(300, 2),
+        makeCmd(100, 3),
+        makeCmd(200, 4),
+    };
+    swosRenderSortCommands(cmds, 5);
+
+    CHECK(cmds[0].sortKey == 100 && cmds[1].sortKey == 100 &&
+          cmds[2].sortKey == 200 && cmds[3].sortKey == 300 && cmds[4].sortKey == 500,
+          "sort commands: ascending by sortKey");
+    // Stability: the two sortKey==100 entries (original slots 1 and 3) must
+    // keep their original relative order.
+    CHECK(cmds[0].slot == 1 && cmds[1].slot == 3,
+          "sort commands: stable for equal keys (original order preserved)");
+}
+
+static void test_sort_commands_edge_cases(void) {
+    swosRenderSortCommands(NULL, 0); // must not crash
+    SwosRenderCommand one = makeCmd(42, 0);
+    swosRenderSortCommands(&one, 1);
+    CHECK(one.sortKey == 42, "sort commands: count 0/1 are no-ops, not crashes");
+
+    SwosRenderCommand already[3] = { makeCmd(1, 0), makeCmd(2, 1), makeCmd(3, 2) };
+    swosRenderSortCommands(already, 3);
+    CHECK(already[0].sortKey == 1 && already[1].sortKey == 2 && already[2].sortKey == 3,
+          "sort commands: already-sorted input stays sorted");
+
+    SwosRenderCommand reversed[3] = { makeCmd(3, 0), makeCmd(2, 1), makeCmd(1, 2) };
+    swosRenderSortCommands(reversed, 3);
+    CHECK(reversed[0].sortKey == 1 && reversed[1].sortKey == 2 && reversed[2].sortKey == 3,
+          "sort commands: fully-reversed input sorts correctly");
+}
+
+static void test_build_frame(void) {
+    swosMemoryInit(true);
+
+    swosBallSpriteSetXPixels(336);
+    swosBallSpriteSetYPixels(449);
+    swosBallSpriteSetZPixels(20);
+    swosBallSpriteSetImageIndex(5);
+
+    // Slot 0: top team, a resolved player-atlas frame (341 + 7 = local 7).
+    swosPlayerSpriteSetTeamNumber(0, 1);
+    swosPlayerSpriteSetXPixels(0, 100);
+    swosPlayerSpriteSetYPixels(0, 200);
+    swosPlayerSpriteSetImageIndex(0, 348);
+
+    // Slot 11: bottom team, an image index outside the known 101-frame
+    // atlas range -- must come back unresolved, not silently substituted.
+    swosPlayerSpriteSetTeamNumber(11, 2);
+    swosPlayerSpriteSetXPixels(11, 300);
+    swosPlayerSpriteSetYPixels(11, 400);
+    swosPlayerSpriteSetImageIndex(11, 999);
+
+    // Every other slot keeps swosMemoryInit's own default team assignment
+    // (PlayerSprite.Init() already assigns all 22 slots a valid team 1/2,
+    // not team 0 -- confirmed empirically, not assumed), so
+    // swosRenderBuildFrame's team-number filter doesn't skip anyone here:
+    // shadow + ball + all 22 players = 24, exactly SWOS_RENDER_MAX_COMMANDS.
+
+    SwosRenderCommand cmds[SWOS_RENDER_MAX_COMMANDS];
+    int count = swosRenderBuildFrame(cmds, SWOS_RENDER_MAX_COMMANDS, 50, 60);
+
+    CHECK(count == SWOS_RENDER_MAX_COMMANDS,
+          "build frame: shadow + ball + all 22 default-initialized players");
+
+    CHECK(cmds[0].kind == SWOS_RENDER_KIND_BALL_SHADOW && cmds[0].layer == SWOS_RENDER_LAYER_SHADOW,
+          "build frame: command 0 is the ball's shadow");
+    CHECK(cmds[1].kind == SWOS_RENDER_KIND_BALL && cmds[1].worldZ == 20,
+          "build frame: command 1 is the ball, carrying its height (shadow does not)");
+    CHECK(cmds[1].worldX == 336 && cmds[1].worldY == 449 &&
+          cmds[1].screenX == 286 && cmds[1].screenY == 389,
+          "build frame: ball world/screen position matches what was seeded");
+
+    // Find the two player commands by slot (order among players follows
+    // the slot scan, 0 before 11, so this should also just be cmds[2]/cmds[3]
+    // -- checked both ways for robustness against a future scan-order change).
+    const SwosRenderCommand *p0 = NULL, *p11 = NULL;
+    for (int i = 0; i < count; i++) {
+        if (cmds[i].kind == SWOS_RENDER_KIND_PLAYER && cmds[i].slot == 0) p0 = &cmds[i];
+        if (cmds[i].kind == SWOS_RENDER_KIND_PLAYER && cmds[i].slot == 11) p11 = &cmds[i];
+    }
+    CHECK(p0 != NULL && p11 != NULL, "build frame: both seeded player slots are present");
+
+    if (p0) {
+        CHECK(p0->team == 1 && p0->palette == 1, "build frame: slot 0 team/palette");
+        CHECK(p0->worldX == 100 && p0->worldY == 200 && p0->screenX == 50 && p0->screenY == 140,
+              "build frame: slot 0 world/screen position");
+        CHECK(p0->imageResolved && p0->atlasId == 0 && p0->atlasFrame == 7,
+              "build frame: slot 0 image 348 resolves to local frame 7 (348-341)");
+    }
+    if (p11) {
+        CHECK(p11->team == 2, "build frame: slot 11 team");
+        CHECK(!p11->imageResolved && p11->atlasFrame == -1,
+              "build frame: slot 11 image 999 is outside the known atlas range -- explicitly unresolved, not a silent standing-frame fallback");
+    }
+
+    // maxCommands cap: pass a buffer too small to hold everything and
+    // confirm the count is clamped, not overrun.
+    SwosRenderCommand small[2];
+    int smallCount = swosRenderBuildFrame(small, 2, 0, 0);
+    CHECK(smallCount == 2, "build frame: respects a caller-supplied maxCommands cap");
+}
+
+int main(void) {
+    test_world_to_screen();
+    test_sort_key();
+    test_sort_commands_order();
+    test_sort_commands_edge_cases();
+    test_build_frame();
+
+    if (g_failures) {
+        printf("\n%d check(s) FAILED\n", g_failures);
+        return 1;
+    }
+    printf("\nall checks passed\n");
+    return 0;
+}

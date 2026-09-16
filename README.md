@@ -1863,3 +1863,62 @@ clean rebuilds, zero warnings.
   that is the correct, designed end of the match.
 - **OpenSWOS vs the original SWOS:** still out of scope, still not
   investigated.
+
+## Status: Phase 2 (2026-09-16) — portable `RenderCommand` layer
+
+New files: `include/swos_render_commands.h`, `src/swos_render_commands.c`.
+No SDL/libnds dependency (only the already-portable `BallSprite`/
+`PlayerSprite` read accessors) — builds on desktop (`make test`) and cross-
+compiles cleanly for ARM (confirmed via `nds-app/`, `sdl-debug/`, both of
+which glob `../src` automatically and both rebuilt clean, zero warnings,
+with the new object file actually present in each build's output). This
+module is new PLUMBING, not a rendering fix — `nds-app/source/main.c` and
+`player_anim.c` are untouched, still doing their own thing; nothing on
+screen changes yet. That wiring is explicitly Phase 4's job per the plan.
+
+**What it does:** `swosRenderBuildFrame(outCommands, maxCommands, cameraX,
+cameraY)` reads the ball, its shadow, and all 22 player slots straight off
+the current VM `Memory` state (read-only — no writes, no gameplay
+decisions) and fills up to `SWOS_RENDER_MAX_COMMANDS` (24)
+`SwosRenderCommand` entries: kind/layer, slot, the REAL `imageIndex` field
+(already live per-tick VM state from the ported `SpriteUpdate`/
+`PlayerActions` animation system, not a guess), a resolved atlas id/frame
+(or explicitly `imageResolved = false` — never a silent standing-frame
+substitute, matching Phase 3's own stated rule applied a phase early),
+world and screen position (via the new `swosRenderWorldToScreen`), a
+depth-sort key (`swosRenderSortKeyForWorldY`, currently a placeholder
+identity on `worldY` — real depth/goal-layer rules are Phase 5), and
+team/palette (palette is currently just `= team`, a placeholder — real
+per-team palettes are Phase 6).
+
+**Atlas resolution is deliberately minimal, not a new mapping:** the only
+rule applied is the ALREADY-DOCUMENTED `local = global - 341` shift from
+`nds-app/source/player_anim.h`'s own header comment (the current 101-frame
+player atlas's known range) — relocated to one shared place instead of
+inventing anything new. Anything outside that range comes back
+`imageResolved = false`. Phase 3 replaces this with a real
+`RENDER_FRAMES[1334]` table covering every global image index (goalkeepers,
+ball-out, tackles, headers, injuries, celebrations, ...); this module's
+shape (the `atlasId`/`atlasFrame`/`imageResolved`/`anchorX`/`anchorY`
+fields already exist) doesn't need to change when that lands.
+
+**Tests** (`tests/test_render_commands.c`, 21 checks, new suite —
+`make test` now 18 suites): `swosRenderWorldToScreen` (identity at zero
+camera, positive/negative offsets, going off-edge), `swosRenderSortCommands`
+(ascending order, STABILITY for equal keys — two commands with the same
+`sortKey` must keep their original relative order — already-sorted and
+fully-reversed inputs), and a full `swosRenderBuildFrame` pass against a
+synthetic `Memory` snapshot (seeded ball position/height/image, one player
+with a resolvable image index and one with an out-of-range one, confirming
+world/screen math, atlas resolution, the unresolved case, team/palette, the
+shadow-then-ball-then-players ordering, and the `maxCommands` cap). One
+empirical correction made while writing the seed data: `PlayerSprite.
+Init()` already assigns all 22 slots a valid team 1/2 (not team 0) as part
+of its own default state — confirmed by running the test, not assumed, and
+the test's own comment now says so instead of the wrong assumption it
+briefly had.
+
+`make test`: 18/18 suites. ARM9/BlocksDS (`nds-app/`) and `sdl-debug/`:
+both clean rebuilds, zero warnings, `swos_render_commands.c` compiled and
+linked into both (not yet called from either's `main()` — see above).
+Separate commit, no gameplay/Memory changes, no renderer wiring.
