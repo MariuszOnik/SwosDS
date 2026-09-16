@@ -1367,9 +1367,65 @@ port and byte-compares the full `0x60000` buffer.
 in this session. This is the first point where the complete per-tick
 match-simulation pipeline — clock, set pieces, referee, scorer list, camera,
 substitutions, and the full stoppage/restart orchestration — runs
-byte-exact against the real OpenSWOS C#. Only step 12 (VM-state → DS
-renderer adapter) remains before there is something to actually run on
-hardware.
+byte-exact against the real OpenSWOS C#.
+
+### Status: step 12 (2026-09-16) — DS renderer adapter, first playable milestone
+
+Different in kind from steps 1-11: there is no more C# to mechanically port
+from, so this step is a hand-designed adapter, not a verified translation.
+New standalone project `nds-app/` (own `Makefile`, modeled on
+`nds-checkpoint/Makefile` + `../swos-ds/Makefile`'s `GFXDIRS` asset
+pipeline) builds the real ported VM (`../src`, `../include`, unmodified —
+same sources the desktop tests use) together with new DS-adapter-only code
+under `nds-app/source/`:
+
+- `match_bootstrap.c/.h` — seeds a placeholder 11-a-side roster (flat
+  mid-range skills, `PlayerInfo` records poked directly into Memory —
+  explicitly supported by `swos_team_data_loader.h`'s own comment: "works
+  correctly against a `PlayerInfo` block populated by any means") at a
+  hand-picked 1-4-4-2 formation on `swos-ds`'s known 672x848 pitch, wires
+  `TeamData`/`topTeamInGame`/`bottomTeamInGame`, calls the real
+  `swosKickoffPrepareForInitialKick()` + `swosCameraSetToInitialPosition()`,
+  then forces `gameStatePl` straight to `K_ST_GAME_IN_PROGRESS` (skipping
+  the referee whistle/waiting-on-player handshake, which would need
+  `Main.cs`-level orchestration never ported here). Both teams start
+  AI-controlled (`TEAMDATA_OFF_PLAYER_NUMBER = 0`) — matches the plan to
+  get AI-vs-AI on screen first; flipping one team to human control is a
+  small follow-up (`swosInputControlsSetJoystickState()` already exists,
+  ported in step 8).
+- `player_anim.c/.h` — real running/standing animation-frame tables (local
+  atlas indices, `local = global - 341`), copied verbatim from
+  `../../swos-ds/source/player.c` — genuine extracted data, not fabricated.
+- `main.c` — GL2D setup, per-frame `scanKeys()` → `swosGameLoopTick()` →
+  render, all copied/adapted from `../../swos-ds/source/main.c`'s
+  already-proven pattern. Renders the pitch tilemap, the ball (with a
+  height-lifted sprite using the real `Z` field), and all 22 player
+  sprites (position/direction read straight from `PlayerSprite` Memory
+  fields via the existing ported accessors). Uses its own simple
+  follow-the-ball scroll camera (not the ported `swos_camera.c` state,
+  whose clipping convention against a 256x192 DS screen wasn't verified —
+  `swos_camera.c` still runs every tick as part of the real simulation,
+  its output just isn't used for the on-screen scroll offset).
+- Graphics assets (`nds-app/graphics/*.png`+`.grit`,
+  `nds-app/source/player_atlas.*`/`ball_atlas.*`/`player_frame_centers.*`/
+  `pitch_map.h`) are copies of files `swos-ds` already extracted from the
+  user's legally-owned GOG SWOS install. `swos-ds` itself is untouched —
+  copying data files for reuse, never editing the sibling project.
+
+**Deliberately NOT mechanical-port fidelity** — this whole step has no
+OpenSWOS source to verify against, unlike every prior step. The formation
+coordinates are hand-picked (not OpenSWOS's own
+`kTopStartingPositions`/`kBottomStartingPositions` tables — their exact
+coordinate-scale convention wasn't verified against `swos-ds`'s
+`WORLD_W`/`WORLD_H`, and getting it subtly wrong would look worse than an
+honest placeholder), and the kickoff-whistle handshake is skipped outright.
+
+ARM9/BlocksDS build (`nds-app/`): clean, zero warnings, `swos_vm_ds_app.nds`
+built successfully. Desktop `make test` (unaffected — no `src`/`include`
+changes this step): still 485/485. No DS emulator is available in this
+environment (see `feedback_host_gcc_devkitpro_mingw64.md`) — the build is
+verified compile-clean but not yet visually confirmed on real hardware or
+an emulator; that's the next thing to actually try.
 
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
@@ -1428,8 +1484,10 @@ hardware.
       minimal-slice candidate)~~ (2026-09-16, see "Status: step 11" above)
     - ~~11B: `GameLoop.cs` itself (2045 lines)~~ (2026-09-16, see "Status:
       step 11B" above)
-12. Adapter from VM state to the DS renderer (mirrors `swos-ds`'s
-    `game_state.c` `swosTick()` boundary)
+12. ~~Adapter from VM state to the DS renderer~~ (2026-09-16, see "Status:
+    step 12" above) — first playable milestone (`nds-app/`, AI vs AI); not
+    mechanical-port fidelity like steps 1-11 (no C# source to verify
+    against), see its own status entry for what's hand-designed vs. real.
 
 After each module: desktop build + tests, diff against OpenSWOS behavior
 where practical, periodic `.nds` build once there's something to render.
