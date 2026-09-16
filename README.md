@@ -363,21 +363,54 @@ game logic.
 
 `make test` (six suites): **137/137** pass (26 + 44 + 2 + 40 + 25).
 
+## Status: ARM/BlocksDS checkpoint (2026-09-16)
+
+After ~2800 new lines across steps 3-4, every test so far had only run
+through desktop mingw64 gcc — never the actual target toolchain/CPU. Before
+step 5, `nds-checkpoint/` (a separate BlocksDS project, own `Makefile`
+copied and trimmed from `../swos-ds/Makefile`) cross-compiles the exact
+same `../src`/`../include` sources (no copies) with
+`arm-none-eabi-gcc -O2 -mthumb -mcpu=arm946e-s+nofp` and links a small
+libnds console app (`source/main.c`) that re-runs 13 already
+host-verified checks — exact expected values taken from
+`tests/test_*.c`/the golden vectors, not re-derived — to catch anything
+that only shows up on the real target: struct layout/alignment surprises,
+UB that happened to behave on x86_64 but not ARM, stack depth through the
+goto-heavy `Section4` state machine, etc. This is **not** the swos-ds game
+— no rendering, no input, just a build+run smoke test.
+
+**Result: clean build, zero warnings, 13/13 checks pass at runtime** (run
+in melonDS — `[60/60] ALL CHECKS PASSED` on screen). Covers `Memory.Init`
+(both pcMode variants), RNG, `CalculateDeltaXAndY` (the goto+Flags+
+`swosAsr32`-shift-heavy trig core), `MoveSprite`, `PlayerSprite`/`TeamData`
+init, and `BallUpdate` friction/bounce/goal-scoring. Binary size: `.text`
+55 KB, `.bss` ~389 KB (dominated by the 384 KB `SWOS_MEM_SIZE` buffer,
+landing in `.bss` since it's zero-initialized) — `.nds` is 125 KB, total
+RAM footprint ~445 KB against the DS's 4 MB, no size/alignment/stack
+surprises found.
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
 2. ~~Sprite views: `BallSprite`, `PlayerSprite`, `TeamData`~~ (2026-09-15, see Status above)
    - ~~2.5: `AnimationTablesData` + full `Memory.Init()`, golden-dump verified~~ (2026-09-15, see Status above)
 3. ~~`SpriteUpdate`~~ (2026-09-16, see Status above)
-4. ~~`BallUpdate`~~ (2026-09-16, see Status above) — pulled forward and
-   fully ported alongside it: `UpdateBallWithControllingGoalkeeper` (one
-   function from `PlayerUpdate.cs`), `BallOutOfPlay.cs` (whole file),
-   `UpdateGoals.cs` (whole file, minus the deferred `RegisterScorer` call)
-5. `PlayerActions` — the rest of it; `SetPlayerAnimationTable` is already
-   done (step 3)
-   - `PlayerUpdate.cs` — the rest of it (1553 - 35 lines); only
-     `UpdateBallWithControllingGoalkeeper` is done (step 4). Not previously
-     in this plan at all -- discovered as a `BallUpdate.cs` dependency.
+4. ~~`BallUpdate`~~ (2026-09-16, see Status above) — plus an ARM/BlocksDS
+   checkpoint (`nds-checkpoint/`, see its own status entry below) — pulled
+   forward and fully ported alongside `BallUpdate.cs` itself:
+   `UpdateBallWithControllingGoalkeeper` (one function from
+   `PlayerUpdate.cs`), `BallOutOfPlay.cs` (whole file), `UpdateGoals.cs`
+   (whole file, minus the deferred `RegisterScorer` call)
+5. `PlayerActions.cs` — the rest of it (`SetPlayerAnimationTable` is
+   already done, step 3)
+5.5. `PlayerUpdate.cs` — the rest of it (1553 - 35 lines; only
+   `UpdateBallWithControllingGoalkeeper` is done, step 4). Not in the
+   original plan at all — discovered as a `BallUpdate.cs` dependency.
+   Split from step 5 into its own sub-step (same reason as step 2.5): two
+   ~1500-line files is enough to want separate commits and separate
+   differential tests, not one large mixed one. Do 5 first (5.5 doesn't
+   block anything on its own — `UpdateBallWithControllingGoalkeeper`, the
+   one piece step 4 actually needed, is already done).
 6. `PlayerControlled`
 7. `UpdatePlayers`
 8. `InputControls`
