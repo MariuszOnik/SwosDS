@@ -2294,3 +2294,54 @@ rebuilt (links `swos_render_commands.c` even though its own draw loop
 doesn't use the RenderCommand pipeline); `sprite-lab/` unaffected (doesn't
 call the sort at all). Visual confirmation on melonDS/hardware still the
 user's own next step.
+
+### Status: Phase 5 follow-up (2026-09-16) — "Goal Post Split": real goal-frame overlay sprites
+
+The user asked for the goal posts/crossbar to occlude the ball and
+goalkeeper correctly when they cross behind the goal line -- without it,
+both always drew in front of the (currently invisible) net, which "looks
+bad" during any shot/save near goal.
+
+Checked the real engine before designing anything (this project's own rule
+against inventing render tricks): `swos-port/src/sprites/gameSprites.cpp`
+has NO separate foreground/background split at all.
+`initGameSprites()` places `swos.goal1TopSprite`/`goal2BottomSprite` at a
+FIXED world position (`kGoalX=300`, `kTopGoalY=129`, `kBottomGoalY=778`) as
+two more entries in the exact same flat, plain-ascending-worldY-sorted
+`kAllSprites` list as every player and the ball. The "ball vanishes behind
+the net" illusion is nothing more than that: an object standing further
+into the goal sorts *before* the fixed-position goal sprite and draws
+under it; an object still in front of the goal line sorts *after* it and
+draws on top. No new sort rule needed at all -- this project's own
+`SWOS_RENDER_LAYER_FOREGROUND` placeholder (reserved back in Phase 2 for a
+"goal foreground slice" that turned out not to exist) stays unused, kept
+declared rather than silently deleted so the correction is visible in the
+diff.
+
+Real ordinals/position cross-checked against two independent sources:
+`swos-port/src/sprites/sprites.h`'s `kTopGoalSprite=1205`/
+`kBottomGoalSprite=1206` (inside `BENCH.DAT`'s 1179-1333 catch-all range,
+still `SWOS_RENDER_ATLAS_NONE` before this), and `swos-port/src/game/
+pitch/pitchConstants.h`'s `kTopPitchLine=129` (matches `kTopGoalY` exactly)
+and its real 296-372 goal-post X range (`kGoalX=300` sits inside it, and
+this port's own measured sprite width, 73px, is close to that same ~76px
+span -- corroborating both numbers, not a coincidence).
+
+New `tools/extract_goal_atlas.py` (same squeezer-based technique as
+`extract_keeper_atlas.py`) packs both real sprites from `BENCH.DAT` (local
+index 26/27) into a 128x64 atlas (8KB -- tiny next to the VRAM budget the
+keeper atlas already had to watch). `SwosRenderCommand` gained
+`SWOS_RENDER_KIND_GOAL`; `swos_render_commands.c`'s new `fillGoalCommand()`
+emits the two commands (real fixed position, `SWOS_RENDER_LAYER_SPRITE`,
+not a special layer) right after the ball, before the player loop, matching
+`kAllSprites`' own real ordering. `SWOS_RENDER_MAX_COMMANDS` bumped 24 -> 26.
+Wired into `nds-app/main.c` and `sprite-lab/` exactly like every other
+atlas.
+
+`make test`: 19/19, including new spot checks in `test_render_frames.c`
+(1205/1206 resolve to the goal atlas) and `test_render_commands.c` (both
+goal commands' real fixed position, layer, and atlas resolution).
+ARM9/BlocksDS (`nds-app/`): clean rebuild, zero warnings. `sdl-debug/` and
+`sprite-lab/`: clean rebuilds, `sprite-lab`'s headless smoke run confirmed
+no crash. Visual confirmation on melonDS/hardware still the user's own next
+step.

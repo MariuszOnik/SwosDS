@@ -9,7 +9,8 @@
 // automatically).
 //
 // Purpose: read a VM Memory snapshot and produce an ordered list of
-// RenderCommand values -- ball, shadow, all 22 players -- so that EVERY
+// RenderCommand values -- ball, shadow, the two static goal frames, all 22
+// players -- so that EVERY
 // renderer (nds-app's GL2D loop, a future SDL frontend, the "sprite
 // laboratory" Phase 4 adds) consumes the exact same decisions instead of
 // each platform separately picking its own animation frame or draw order.
@@ -38,21 +39,28 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Draw layer, coarse-grained. Phase 5 (depth/goal ordering) will likely
-// split SWOS_RENDER_LAYER_SPRITE further (goal background vs. foreground
-// slats) -- kept deliberately small here since this phase only emits ball/
-// shadow/player commands.
+// Draw layer, coarse-grained. PHASE 5 BUGFIX ("Goal Post Split") checked
+// the real engine before extending this: swos-port/src/sprites/
+// gameSprites.cpp's drawSprites() has NO separate foreground/background
+// split at all -- the two goal-frame sprites are just two more entries in
+// the SAME flat, plain-worldY-sorted list as the ball and every player, at
+// a fixed position (see swos_render_commands.c's fillGoalCommand). So
+// SWOS_RENDER_LAYER_FOREGROUND below turned out to be unneeded -- kept
+// as an unused, reserved value rather than silently repurposed, so this
+// correction is visible in the diff instead of erasing the earlier
+// (wrong) assumption.
 typedef enum {
     SWOS_RENDER_LAYER_PITCH = 0,   // not emitted by this module (nds-app draws its own tilemap); reserved so callers can sort a full frame consistently
     SWOS_RENDER_LAYER_SHADOW = 1,
-    SWOS_RENDER_LAYER_SPRITE = 2,  // ball + players, depth-sortable by worldY
-    SWOS_RENDER_LAYER_FOREGROUND = 3, // reserved for Phase 5's goal-foreground slice
+    SWOS_RENDER_LAYER_SPRITE = 2,  // ball + players + goal frames, all depth-sortable by worldY together
+    SWOS_RENDER_LAYER_FOREGROUND = 3, // reserved, currently unused -- see comment above
 } SwosRenderLayer;
 
 typedef enum {
     SWOS_RENDER_KIND_BALL = 0,
     SWOS_RENDER_KIND_BALL_SHADOW = 1,
     SWOS_RENDER_KIND_PLAYER = 2,
+    SWOS_RENDER_KIND_GOAL = 3,
 } SwosRenderKind;
 
 typedef struct {
@@ -111,10 +119,12 @@ typedef struct {
     // failed -- see imageResolved).
     int16_t anchorX, anchorY;
 
-    // Depth-sort key. This phase uses plain worldY (see
-    // swosRenderSortKeyForWorldY) -- Phase 5 owns the real foot-point/
-    // shadow-before-object/goal-layer-split rules; this is a placeholder
-    // ordering, not a claim of correctness.
+    // Depth-sort key: plain worldY (see swosRenderSortKeyForWorldY).
+    // "Shadow before object" is handled by .layer, not this field (see
+    // SwosRenderLayer's own comment) -- confirmed correct in Phase 5
+    // bugfix's shadow-ordering fix and again by "Goal Post Split", which
+    // found the real engine needs no foot-point or goal-layer special case
+    // beyond plain worldY either.
     int32_t sortKey;
 
     // team: 0 (ball), 1 (top), 2 (bottom) -- mirrors PlayerSprite.OffTeamNumber.
@@ -125,9 +135,10 @@ typedef struct {
     int16_t palette;
 } SwosRenderCommand;
 
-// Ball + shadow + up to 22 players = 24 commands, fixed upper bound so
-// callers can size a stack array without a separate count query.
-#define SWOS_RENDER_MAX_COMMANDS 24
+// Ball + shadow + 2 goal frames + up to 22 players = 26 commands, fixed
+// upper bound so callers can size a stack array without a separate count
+// query.
+#define SWOS_RENDER_MAX_COMMANDS 26
 
 // Pure coordinate transform: worldX/Y minus cameraX/Y. No clamping, no
 // screen-bounds logic (a renderer decides whether/how to cull
@@ -149,13 +160,15 @@ int32_t swosRenderSortKeyForWorldY(int32_t worldY);
 // belongs to).
 void swosRenderSortCommands(SwosRenderCommand *commands, int count);
 
-// Reads the ball, its shadow, and all 22 player slots from the CURRENT VM
-// Memory state (via the existing ported BallSprite/PlayerSprite read
-// accessors -- no Memory writes) and writes up to SWOS_RENDER_MAX_COMMANDS
-// entries into outCommands, world-space and screen-space (against
-// cameraX/cameraY) but NOT yet sorted -- call swosRenderSortCommands()
-// separately if depth order is needed. Player slots whose team number is
-// neither 1 nor 2 (unused slots) are skipped, matching nds-app/main.c's own
-// existing filter. Returns the number of commands written.
+// Reads the ball, its shadow, the two static goal frames (fixed real-world
+// position, not read from Memory at all), and all 22 player slots from the
+// CURRENT VM Memory state (via the existing ported BallSprite/PlayerSprite
+// read accessors -- no Memory writes) and writes up to
+// SWOS_RENDER_MAX_COMMANDS entries into outCommands, world-space and
+// screen-space (against cameraX/cameraY) but NOT yet sorted -- call
+// swosRenderSortCommands() separately if depth order is needed. Player
+// slots whose team number is neither 1 nor 2 (unused slots) are skipped,
+// matching nds-app/main.c's own existing filter. Returns the number of
+// commands written.
 int swosRenderBuildFrame(SwosRenderCommand *outCommands, int maxCommands,
                           int32_t cameraX, int32_t cameraY);

@@ -70,6 +70,10 @@ $(BUILD)/keeper_atlas.o: ../nds-app/source/keeper_atlas.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/goal_atlas.o: ../nds-app/source/goal_atlas.c
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # The actual pixel/palette DATA for the three real atlases -- grit's output
 # from ../nds-app's own build (see check-gfx above), pure C arrays, no
 # libnds/GL2D dependency either.
@@ -77,9 +81,9 @@ $(BUILD)/%_texture.o: $(NDS_APP_GFX)/%_texture.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-TEXTURE_OBJS := $(BUILD)/player_atlas_texture.o $(BUILD)/player_atlas_team2_texture.o $(BUILD)/keeper_atlas_texture.o $(BUILD)/ball_atlas_texture.o
+TEXTURE_OBJS := $(BUILD)/player_atlas_texture.o $(BUILD)/player_atlas_team2_texture.o $(BUILD)/keeper_atlas_texture.o $(BUILD)/goal_atlas_texture.o $(BUILD)/ball_atlas_texture.o
 
-EXTRA_OBJS := $(BUILD)/render_frames.o $(BUILD)/player_atlas.o $(BUILD)/keeper_atlas.o $(BUILD)/ball_atlas.o $(TEXTURE_OBJS)
+EXTRA_OBJS := $(BUILD)/render_frames.o $(BUILD)/player_atlas.o $(BUILD)/keeper_atlas.o $(BUILD)/goal_atlas.o $(BUILD)/ball_atlas.o $(TEXTURE_OBJS)
 
 $(BUILD)/swos_sprite_lab.exe: $(APP_OBJS) $(EXTRA_OBJS)
 	$(CC) $(CFLAGS) $(APP_OBJS) $(EXTRA_OBJS) -o $@ $(SDL2_LIBS)

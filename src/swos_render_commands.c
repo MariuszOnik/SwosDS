@@ -149,6 +149,44 @@ static void fillBallCommand(SwosRenderCommand *cmd, SwosRenderKind kind,
     cmd->palette = 0;
 }
 
+// PHASE 5 BUGFIX ("Goal Post Split", 2026-09-16). Real, fixed world
+// position and ordinals -- NOT read from Memory at all, these sprites never
+// move -- cross-checked against two independent real sources:
+//   swos-port/src/sprites/gameSprites.cpp's initGameSprites():
+//     kGoalX=300, kTopGoalY=129, kBottomGoalY=778,
+//     kTopGoalSprite=1205, kBottomGoalSprite=1206.
+//   swos-port/src/game/pitch/pitchConstants.h: kTopPitchLine=129 (matches
+//     kTopGoalY exactly); kGoalX=300 sits inside the real 296-372 goal-post
+//     X range there, and this port's own measured sprite width (73px, see
+//     tools/extract_goal_atlas.py) is close to that same ~76px span.
+// These two commands use plain SWOS_RENDER_LAYER_SPRITE, NOT a separate
+// foreground layer -- gameSprites.cpp's drawSprites() has no such split
+// (see SwosRenderLayer's own comment in the header): a fixed-position goal
+// sprite occludes anything behind it purely because that object's own
+// worldY sorts before the goal's fixed worldY, and draws on top of
+// anything still in front of the goal line for the same reason.
+#define SWOS_GOAL_WORLD_X 300
+#define SWOS_GOAL_TOP_WORLD_Y 129
+#define SWOS_GOAL_BOTTOM_WORLD_Y 778
+#define SWOS_GOAL_TOP_GLOBAL_INDEX 1205
+#define SWOS_GOAL_BOTTOM_GLOBAL_INDEX 1206
+
+static void fillGoalCommand(SwosRenderCommand *cmd, bool top,
+                             int32_t cameraX, int32_t cameraY) {
+    cmd->kind = SWOS_RENDER_KIND_GOAL;
+    cmd->layer = SWOS_RENDER_LAYER_SPRITE;
+    cmd->slot = -1;
+    cmd->globalImageIndex = top ? SWOS_GOAL_TOP_GLOBAL_INDEX : SWOS_GOAL_BOTTOM_GLOBAL_INDEX;
+    resolveFrame(cmd);
+    cmd->worldX = SWOS_GOAL_WORLD_X;
+    cmd->worldY = top ? SWOS_GOAL_TOP_WORLD_Y : SWOS_GOAL_BOTTOM_WORLD_Y;
+    cmd->worldZ = 0;
+    swosRenderWorldToScreen(cmd->worldX, cmd->worldY, cameraX, cameraY, &cmd->screenX, &cmd->screenY);
+    cmd->sortKey = swosRenderSortKeyForWorldY(cmd->worldY);
+    cmd->team = 0;
+    cmd->palette = 0;
+}
+
 static void fillPlayerCommand(SwosRenderCommand *cmd, int slot,
                                int32_t cameraX, int32_t cameraY) {
     cmd->kind = SWOS_RENDER_KIND_PLAYER;
@@ -175,6 +213,14 @@ int swosRenderBuildFrame(SwosRenderCommand *outCommands, int maxCommands,
     }
     if (count < maxCommands) {
         fillBallCommand(&outCommands[count], SWOS_RENDER_KIND_BALL, cameraX, cameraY);
+        count++;
+    }
+    if (count < maxCommands) {
+        fillGoalCommand(&outCommands[count], true, cameraX, cameraY);
+        count++;
+    }
+    if (count < maxCommands) {
+        fillGoalCommand(&outCommands[count], false, cameraX, cameraY);
         count++;
     }
 

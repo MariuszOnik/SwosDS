@@ -104,6 +104,14 @@ static void test_known_spot_checks(void) {
     CHECK(swosRenderFramesLookup(1279, &info) && info.category == SWOS_RENDER_FRAME_CAT_REFEREE,
           "global 1279 (s_RefWaiting) is categorized as a referee frame");
 
+    // "Goal Post Split" (Phase 5 bugfix): global 1205/1206 = the real static
+    // goal-frame overlay sprites (kTopGoalSprite/kBottomGoalSprite,
+    // swos-port/src/sprites/sprites.h), inside BENCH.DAT's 1179-1333 range.
+    CHECK(swosRenderFramesLookup(1205, &info) && info.atlasId == SWOS_RENDER_ATLAS_GOAL && info.atlasFrame == 0,
+          "global 1205 (top goal frame) resolves to the goal atlas, local frame 0");
+    CHECK(swosRenderFramesLookup(1206, &info) && info.atlasId == SWOS_RENDER_ATLAS_GOAL && info.atlasFrame == 1,
+          "global 1206 (bottom goal frame) resolves to the goal atlas, local frame 1");
+
     // Out-of-range indices must fail cleanly, not read out of bounds.
     CHECK(!swosRenderFramesLookup(-1, &info), "negative index is rejected, not a silent substitute");
     CHECK(!swosRenderFramesLookup(SWOS_RENDER_FRAME_COUNT, &info), "one-past-the-end index is rejected");

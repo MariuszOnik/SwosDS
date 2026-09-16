@@ -58,6 +58,13 @@ physical 116 sprites mirrored, per this file's own ordinal-range comment
 above, so atlas_for() maps BOTH 947-1062 and 1063-1178 onto the one
 ATLAS_KEEPER texture, with local frame = ordinal - 947 / ordinal - 1063
 respectively (same numbering space, since they're the same pixels).
+
+PHASE 5 BUGFIX addendum (2026-09-16, "Goal Post Split"): tools/
+extract_goal_atlas.py built a 2-frame texture for the two static goal-frame
+overlay sprites (global 1205 top / 1206 bottom, inside BENCH.DAT's
+1179-1333 catch-all range -- see tools/extract_goal_atlas.py's own module
+docstring for why no separate foreground/background layer was needed, only
+these two ordinary Y-sortable sprites at a fixed real position).
 """
 import re
 import struct
@@ -89,6 +96,7 @@ ATLAS_PLAYER = 0       # nds-app/graphics/player_atlas_texture.png, 101 frames, 
 ATLAS_BALL = 1         # nds-app/graphics/ball_atlas_texture.png, 5 frames, global 1179-1183
 ATLAS_PLAYER_TEAM2 = 2 # nds-app/graphics/player_atlas_team2_texture.png (Phase 4), 101 frames, global 644-744 (away)
 ATLAS_KEEPER = 3       # nds-app/graphics/keeper_atlas_texture.png (Phase 5), 116 frames, global 947-1062 (team1) / 1063-1178 (team2, same physical sprites)
+ATLAS_GOAL = 4          # nds-app/graphics/goal_atlas_texture.png (Phase 5 bugfix, "Goal Post Split"), 2 frames, global 1205 (top) / 1206 (bottom)
 
 
 def parse_dat(path, start_ordinal, expect_count=None):
@@ -218,6 +226,10 @@ def atlas_for(ordinal):
         return ATLAS_KEEPER, ordinal - 1063  # same physical goal1.dat sprites, mirrored
     if 1179 <= ordinal <= 1183:
         return ATLAS_BALL, ordinal - 1179
+    if ordinal == 1205:
+        return ATLAS_GOAL, 0  # top goal frame (kTopGoalSprite)
+    if ordinal == 1206:
+        return ATLAS_GOAL, 1  # bottom goal frame (kBottomGoalSprite)
     return ATLAS_NONE, -1
 
 

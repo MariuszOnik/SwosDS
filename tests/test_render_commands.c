@@ -9,6 +9,7 @@
 #include "swos_memory.h"
 #include "swos_player_sprite.h"
 #include "swos_render_commands.h"
+#include "swos_render_frames.h"
 
 static int g_failures = 0;
 
@@ -132,13 +133,14 @@ static void test_build_frame(void) {
     // (PlayerSprite.Init() already assigns all 22 slots a valid team 1/2,
     // not team 0 -- confirmed empirically, not assumed), so
     // swosRenderBuildFrame's team-number filter doesn't skip anyone here:
-    // shadow + ball + all 22 players = 24, exactly SWOS_RENDER_MAX_COMMANDS.
+    // shadow + ball + 2 goal frames + all 22 players = 26, exactly
+    // SWOS_RENDER_MAX_COMMANDS.
 
     SwosRenderCommand cmds[SWOS_RENDER_MAX_COMMANDS];
     int count = swosRenderBuildFrame(cmds, SWOS_RENDER_MAX_COMMANDS, 50, 60);
 
     CHECK(count == SWOS_RENDER_MAX_COMMANDS,
-          "build frame: shadow + ball + all 22 default-initialized players");
+          "build frame: shadow + ball + 2 goal frames + all 22 default-initialized players");
 
     CHECK(cmds[0].kind == SWOS_RENDER_KIND_BALL_SHADOW && cmds[0].layer == SWOS_RENDER_LAYER_SHADOW,
           "build frame: command 0 is the ball's shadow");
@@ -147,6 +149,20 @@ static void test_build_frame(void) {
     CHECK(cmds[1].worldX == 336 && cmds[1].worldY == 449 &&
           cmds[1].screenX == 286 && cmds[1].screenY == 389,
           "build frame: ball world/screen position matches what was seeded");
+
+    // "Goal Post Split" (Phase 5 bugfix): the two static goal-frame
+    // commands, real fixed world position (swos-port's own kGoalX/kTopGoalY/
+    // kBottomGoalY), plain SWOS_RENDER_LAYER_SPRITE (not a special
+    // foreground layer -- see swos_render_commands.c's fillGoalCommand).
+    CHECK(cmds[2].kind == SWOS_RENDER_KIND_GOAL && cmds[2].layer == SWOS_RENDER_LAYER_SPRITE &&
+          cmds[2].globalImageIndex == 1205 && cmds[2].worldX == 300 && cmds[2].worldY == 129,
+          "build frame: command 2 is the top goal frame at its real fixed position");
+    CHECK(cmds[3].kind == SWOS_RENDER_KIND_GOAL && cmds[3].layer == SWOS_RENDER_LAYER_SPRITE &&
+          cmds[3].globalImageIndex == 1206 && cmds[3].worldX == 300 && cmds[3].worldY == 778,
+          "build frame: command 3 is the bottom goal frame at its real fixed position");
+    CHECK(cmds[2].imageResolved && cmds[2].atlasId == SWOS_RENDER_ATLAS_GOAL && cmds[2].atlasFrame == 0 &&
+          cmds[3].imageResolved && cmds[3].atlasId == SWOS_RENDER_ATLAS_GOAL && cmds[3].atlasFrame == 1,
+          "build frame: both goal frames resolve to the real goal atlas");
 
     // PHASE 4 BUGFIX regression: the shadow must NOT sit at the ball's own
     // worldX/worldY (that put them at the identical screen rect whenever

@@ -42,7 +42,7 @@ typedef enum {
 } SwosRenderFrameCategory;
 
 // atlasId values -- MUST match tools/extract_render_frames.py's ATLAS_*
-// constants. Only four real pixel atlases exist today; everything else is
+// constants. Only five real pixel atlases exist today; everything else is
 // SWOS_RENDER_ATLAS_NONE until a future extraction pass builds more.
 #define SWOS_RENDER_ATLAS_NONE   (-1)
 #define SWOS_RENDER_ATLAS_PLAYER       0  // nds-app/graphics/player_atlas_texture.png, 101 frames (global 341-441, home team)
@@ -64,6 +64,13 @@ typedef enum {
 // _KEEPER_TEAM2 resolve into this ONE atlas/texture, each with its own
 // atlasFrame (0-115) into the SAME KEEPER_texcoords[] table.
 #define SWOS_RENDER_ATLAS_KEEPER       3  // nds-app/graphics/keeper_atlas_texture.png, 116 frames (global 947-1062 team1 / 1063-1178 team2, same physical sprites)
+// PHASE 5 BUGFIX (2026-09-16, "Goal Post Split"): the two static goal-frame
+// overlay sprites (posts+crossbar, one per goal, real fixed world position
+// -- see tools/extract_goal_atlas.py). Not a foreground layer: the real
+// engine (swos-port/src/sprites/gameSprites.cpp) draws these as two more
+// entries in the SAME plain worldY-sorted list as the ball/players, which
+// is exactly how an object behind the goal line ends up occluded by it.
+#define SWOS_RENDER_ATLAS_GOAL         4  // nds-app/graphics/goal_atlas_texture.png, 2 frames (global 1205 top / 1206 bottom)
 
 typedef struct {
     bool valid;               // true iff a real SWOS sprite header exists at this ordinal
