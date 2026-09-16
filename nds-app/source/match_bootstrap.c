@@ -99,12 +99,28 @@ void dsBootstrapMatch(void)
     swosKickoffPrepareForInitialKick();
     swosCameraSetToInitialPosition();
 
-    // DS-adapter simplification: skip the referee whistle / waiting-on-
-    // player handshake PrepareForInitialKick sets up (gameStatePl=101,
-    // breakCameraMode=-1) -- driving that state machine to a real kickoff
-    // needs Main.cs-level orchestration this project hasn't ported (see
-    // header comment) -- and go straight to live play instead.
-    swosWriteWord(ADDR_gameState, 0);
-    swosWriteWord(ADDR_gameStatePl, 100 /* K_ST_GAME_IN_PROGRESS */);
-    swosWriteWord(ADDR_breakCameraMode, 0);
+    // ETAP 0 audit fix (2026-09-16): this function USED to force
+    // gameStatePl straight to K_ST_GAME_IN_PROGRESS (100) and
+    // breakCameraMode to 0 right here, skipping PrepareForInitialKick's own
+    // real state (gameStatePl=101/K_ST_STOPPED, breakCameraMode=-1,
+    // gameState=0). That was one confirmed cause of the broken-looking
+    // kickoff: with gameStatePl already 100, `swos_update_players.c`'s
+    // per-tick "STOPPAGE PATH (gameStatePl != 100)" branch -- which calls
+    // setPlayerPositionsForGameBreak(), the real, mechanically-ported,
+    // byte-tested walk-to-formation logic driven by OpenSWOS's own
+    // kTopStartingPositions/kBottomStartingPositions tables -- never ran,
+    // not even once. Every player was left exactly on this file's
+    // hand-picked, UNVERIFIED kTopFormationX/Y/kBottomFormationX/Y
+    // placeholder coordinates forever, immediately treated as live play.
+    // The step-12 integration test proves C/C# parity for this shared,
+    // synthetic setup through tick 10. It does not validate the hand-made
+    // bootstrap itself or a complete kickoff-to-live-play sequence.
+    //
+    // The fix is to do nothing here: leave PrepareForInitialKick's own
+    // gameStatePl/breakCameraMode/gameState exactly as it set them, and let
+    // the real, already-ported-and-tested GameLoop tick machinery
+    // (the break-camera-mode ladder, then the CPU waiting-on-player safety
+    // net in swosGameLoopCoreGameUpdate) walk both AI teams into their real
+    // kickoff formation and on into K_ST_GAME_IN_PROGRESS on its own, over
+    // the following ticks -- exactly like a real match would.
 }

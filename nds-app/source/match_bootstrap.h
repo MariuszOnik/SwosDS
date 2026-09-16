@@ -14,15 +14,28 @@
 // This file fills both gaps with the minimum needed to make the REAL,
 // mechanically-ported simulation (AI brain, physics, referee, ball, game
 // loop -- all in ../../src) runnable and visible: a placeholder 11-a-side
-// roster with flat mid-range skills for each team, placed directly at a
-// hand-picked formation (NOT derived from OpenSWOS's own starting-position
-// tables -- their coordinate scale/offset convention wasn't verified
-// against swos-ds's WORLD_W/WORLD_H=672x848 pitch, so a fresh, honestly
-// simple layout was used instead of risking a subtly-wrong mechanical
-// value), then forces the game state straight to "live play" (skipping the
-// referee whistle/waiting-on-player handshake, since driving that from a
-// cold Init() would need Main.cs-level orchestration this project doesn't
-// have).
+// roster with flat mid-range skills for each team, placed at an arbitrary
+// initial layout (NOT OpenSWOS's own starting-position tables -- just a
+// starting point for the walk-in below), then calls the real
+// Kickoff.PrepareForInitialKick() and lets it stand.
+//
+// ETAP 0 audit fix (2026-09-16): this function used to ALSO force
+// gameStatePl straight to K_ST_GAME_IN_PROGRESS and breakCameraMode to 0
+// immediately after PrepareForInitialKick(), skipping the real
+// waiting-on-player/break-camera state machine entirely. That silently
+// skipped the one piece of already-ported, already byte-tested logic that
+// actually places players at OpenSWOS's real kickoff formation
+// (`setPlayerPositionsForGameBreak()` in swos_update_players.c, driven by
+// the real kTopStartingPositions/kBottomStartingPositions tables) --
+// confirmed to be one cause of the broken-looking on-screen kickoff. A
+// separate renderer bug treated bitmap row 0 as world y=0 instead of y=16.
+// Fixed here by simply NOT overriding gameStatePl/
+// breakCameraMode here: PrepareForInitialKick's own state (101/-1/0)
+// stands, and the real GameLoop tick machinery (already fully ported,
+// step 11) carries both AI teams from there into a correct kickoff
+// formation and then into live play on its own, exactly like a real match.
+// The integration test proves C/C# parity through tick 10 for this shared
+// synthetic setup; it is not a long-run proof of the entire match.
 #pragma once
 
 // Sets up PlayerInfo records (both teams), sprite ordinals/positions,

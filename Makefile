@@ -39,6 +39,19 @@ $(BUILD)/%: tests/%.c $(OBJS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $< $(OBJS) -o $@
 
+# test_step12_integration_golden.c links the real nds-app/source/
+# match_bootstrap.c directly (not copied) -- it's the DS app's own match
+# setup, portable C with no libnds/GL2D dependency, so it builds fine here.
+# A specific rule (not the generic %-pattern above) since this one test
+# needs an extra object and include path.
+$(BUILD)/match_bootstrap.o: nds-app/source/match_bootstrap.c
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -Inds-app/source -c $< -o $@
+
+$(BUILD)/test_step12_integration_golden: tests/test_step12_integration_golden.c $(OBJS) $(BUILD)/match_bootstrap.o
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -Inds-app/source $< $(OBJS) $(BUILD)/match_bootstrap.o -o $@
+
 test: $(TEST_BINS)
 	@for t in $(TEST_BINS); do echo "== $$t =="; ./$$t || exit 1; done
 

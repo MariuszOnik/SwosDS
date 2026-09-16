@@ -27,6 +27,7 @@ export BLOCKSDS			?= C:/msys64/opt/wonderful/thirdparty/blocksds/core
 export BLOCKSDSEXT		?= C:/msys64/opt/wonderful/thirdparty/blocksds/external
 
 export WONDERFUL_TOOLCHAIN	?= C:/msys64/opt/wonderful
+export PATH			:= C:/msys64/opt/wonderful/bin:$(PATH)
 ARM_NONE_EABI_PATH	?= $(WONDERFUL_TOOLCHAIN)/toolchain/gcc-arm-none-eabi/bin/
 
 NAME		:= swos_vm_ds_app

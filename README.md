@@ -1491,3 +1491,25 @@ an emulator; that's the next thing to actually try.
 
 After each module: desktop build + tests, diff against OpenSWOS behavior
 where practical, periodic `.nds` build once there's something to render.
+
+### SDL diagnostic frontend (step 12.5)
+
+`sdl-debug/` builds the same portable `src/*.c` VM used by the tests and
+links the DS adapter's `match_bootstrap.c` directly. It displays all 22
+slots, writes optional TSV logs, and supports pause, single-step,
+fast-forward and automatic stall capture.
+
+```sh
+cd sdl-debug
+make
+make run
+```
+
+Controls: `Space` pause, `N` one VM tick, `F` 100 ticks/displayed frame,
+`R` reset, `L` toggle `sdl_debug_log.tsv`, arrows/Tab select a slot, `D`
+dumps the selected slot, `Esc` exits. The debugger pauses and dumps state
+after 300 ticks without movement of the ball or any player.
+
+Coordinate convention: VM positions use a 672x880 world with centre spot
+`(336,449)`. The 672x848 `PITCH*.DAT` bitmap represents world rows 16..863;
+bitmap row 0 must therefore be drawn at world `y=16`, not `y=0`.

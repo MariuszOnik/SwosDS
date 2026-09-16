@@ -34,8 +34,9 @@
 
 #define SCREEN_W 256
 #define SCREEN_H 192
-#define WORLD_W  672  // swos-ds's pitch image size -- see pitch_map.h.
-#define WORLD_H  848
+#define WORLD_W  672
+#define WORLD_H  880  // VM/gameplay coordinate range is y=0..879.
+#define PITCH_BITMAP_WORLD_Y 16 // PITCH*.DAT row 0 represents VM world y=16.
 #define BALL_HALF_SIZE 2
 
 // DS-adapter-only camera: an 8x-lerp follow-the-ball scroll, clamped to the
@@ -67,10 +68,18 @@ static void cameraUpdate(Camera *c, int followX, int followY)
 
 static void drawPitch(int cx, int cy)
 {
-    int firstX = cx >> 4, firstY = cy >> 4, ox = -(cx & 15), oy = -(cy & 15);
+    // The 672x848 PITCH bitmap is not rooted at VM world y=0. Original
+    // SWOS has one invisible 16-pixel tile row above it, so bitmap row 0
+    // maps to world y=16 (docs/SWOS/pitch.txt). Keep camera/player/ball in
+    // VM coordinates and apply the offset only while drawing the bitmap.
+    int pitchY = cy - PITCH_BITMAP_WORLD_Y;
+    int firstX = cx >> 4, firstY = pitchY >> 4;
+    int ox = -(cx & 15), oy = -(pitchY & 15);
     for (int r = 0; r < 13 && firstY + r < PITCH_MAP_HEIGHT; r++)
         for (int col = 0; col < 17 && firstX + col < PITCH_MAP_WIDTH; col++)
         {
+            if (firstY + r < 0 || firstX + col < 0)
+                continue;
             int tile = PITCH_MAP[(firstY + r) * PITCH_MAP_WIDTH + firstX + col];
             glSprite(ox + col * 16, oy + r * 16, GL_FLIP_NONE, &pitchTiles[tile]);
         }
