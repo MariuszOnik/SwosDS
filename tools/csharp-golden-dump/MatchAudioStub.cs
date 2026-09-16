@@ -53,4 +53,8 @@ public static class MatchAudio
     public static void PlayEndGameWhistle() { }
     public static void EnqueueRedCard() { }
     public static void EnqueueYellowCard() { }
+
+    // Added for step 11 (Bench.cs) -- same rationale as above.
+    public static void EnqueueSubstitute() { }
+    public static void EnqueueTactics() { }
 }

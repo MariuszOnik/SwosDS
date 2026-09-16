@@ -1218,6 +1218,78 @@ byte-compares the full `0x60000` buffer.
 59 + 40). ARM9/BlocksDS cross-compile: clean, zero warnings, `.nds` built
 successfully (build-only check).
 
+## Status: step 11 (2026-09-16) — full port of `Bench.cs`
+
+The dedicated `Bench.cs` step flagged at the end of step 11A is done: the
+whole 1868-line file, extending the existing 3-accessor minimal slice
+(`InBench`/`InBenchMenus`/`GetBenchState`, steps 8/11A) into the full
+substitution/bench-menu module (`include/swos_bench.h`/`src/swos_bench.c`).
+
+**Almost the entire file is private surface reached through two public
+entry points** (`UpdateBench`/`BenchCheckControls`, same shape as step 7B's
+`UpdatePlayers.cs`), plus ~25 small public accessors. Ported in full:
+the out-of-bench "is the bench being summoned" poll (`BenchBlocked`/
+`BenchUnavailable`/`GetNonBenchControlsTeam`/`UpdateNonBenchControls`/
+`BenchInvoked` — including the tap-counter direction-detector verified 1:1
+against the SWOS disassembly per the C#'s own header note), the full menu
+FSM (`BenchState` initial/about-to-substitute/formation/marking-players,
+each with its own handler), substitution (`InitiateSubstitution`/
+`SubstitutePlayer` — PlayerInfo record swap, sprite-content swap keeping
+ordinals, shirt-number table swap, frame-index re-derivation), tactics
+change, and the substituted-player walk-on/walk-off state machine
+(`UpdateSubstitutedPlayerWalk` — the real per-tick FSM `UpdatePlayers.cs`
+step 7B left as a TODO, hosted here per the C#'s own documented choice,
+stepped first in `UpdateBench` to preserve the original tick order).
+
+**A subtle, easy-to-miss divergence caught by reading the whole file, not
+just its call sites:** `Bench.cs` has its OWN private `StopAllPlayers()`
+(team.cpp:26-44) — a *different* function from the already-ported
+`TeamPort.StopAllPlayers()` (step 5.5), despite sharing a name. The two
+disagree on one bit: `TeamPort.StopAllPlayers()` always clears both teams'
+`goalkeeperPlaying` (production behavior, no `SWOS_TEST` flag wired);
+`Bench.cs`'s own copy deliberately preserves the *original SWOS bug* where
+the top team's `goalkeeperPlaying` is never cleared (per its own comment).
+Ported as two distinct C functions, matching the C# source's own
+duplication — reusing `swosTeamPortStopAllPlayers()` here would have
+silently "fixed" a bug the port is chartered to reproduce exactly.
+
+**Debug-only surface omitted** (documented, not stubbed, zero `Memory`
+effect): `DebugTapStateString`/`DebugLastPollGameStatePl`/
+`DebugLastPollBlocked`/`DebugLastPollUnavailable` — pure diagnostic
+captures for the original's `--bench-test` harness. The underlying calls
+they capture (`BenchBlocked`/`BenchUnavailable`) are still made in full —
+only the extra debug-field storage is omitted, confirmed by reading each
+one (they tick down real `Memory` timers with real gameplay consequences).
+
+**Extended, not duplicated:** `TeamDataLoader`'s minimal-slice header
+(steps 5/5.5) gained `OffSubstituted`/`OffCards`/`OffFace` (the
+eligibility checks and post-swap frame re-derivation need them,
+comment-filtered-grep verified against the whole file).
+
+**Differential tests, full VM/Memory state:**
+`tools/csharp-golden-dump/Step11BenchGolden.cs`, 28 scenarios — every
+public accessor, both `InitBenchBeforeMatch` variants, out-of-bench polling
+(blocked by timer/referee, unavailable during play/ceremonies, CPU teams
+never invoke, single tap doesn't invoke, triple tap invokes, secondary-fire
+invokes), `InvokeBench` (normal, mid-throw-in cleanup, keeper-holds-ball
+claim), in-bench menu navigation (arrow selection, coach-row → marking
+menu, substitute-row → about-to-substitute with exact-position matching,
+formation menu → `ChangeTactics`, leave via left/right motion), a full
+`InitiateSubstitution` → walk-FSM → `SubstitutePlayer` cycle verifying the
+PlayerInfo/sprite/shirt-number swap, the walk FSM's three direct states
+(still travelling, stretchered shortcut, settled completion), and
+`CheckIfGoalkeeperClaimedTheBall`'s both branches (including the preserved
+top-team `goalkeeperPlaying` bug). `tests/test_step11_bench_golden.c`
+replays each scenario through the C port and byte-compares the full
+`0x60000` buffer.
+
+**28/28 match byte-for-byte, first run.** `make test` (fifteen suites):
+**437/437** pass (26 + 44 + 2 + 40 + 25 + 31 + 45 + 12 + 24 + 11 + 23 + 27 +
+59 + 40 + 28). ARM9/BlocksDS cross-compile: clean, zero warnings, `.nds`
+built successfully (build-only check).
+
+Only `GameLoop.cs` itself (2045 lines, step 11B) remains before step 12.
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
@@ -1269,9 +1341,9 @@ successfully (build-only check).
       `PlayerNameDisplay.cs`, `Stats.cs` (all full ports), plus a minimal
       `Bench.cs` extension (`InBenchMenus`/`GetBenchState`)~~ (2026-09-16,
       see Status above)
-    - `Bench.cs` full port (1868 lines -- `UpdateBench`/
+    - ~~`Bench.cs` full port (1868 lines -- `UpdateBench`/
       `CheckIfGoalkeeperClaimedTheBall` reach almost the entire file, not a
-      minimal-slice candidate; see step 11A's status entry)
+      minimal-slice candidate)~~ (2026-09-16, see "Status: step 11" above)
     - 11B: `GameLoop.cs` itself (2045 lines)
 12. Adapter from VM state to the DS renderer (mirrors `swos-ds`'s
     `game_state.c` `swosTick()` boundary)

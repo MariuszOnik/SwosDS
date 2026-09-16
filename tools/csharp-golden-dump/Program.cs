@@ -37,5 +37,6 @@ Step8Golden.Run(outDir);
 Step9Golden.Run(outDir);
 Step10Golden.Run(outDir);
 Step11AGolden.Run(outDir);
+Step11BenchGolden.Run(outDir);
 
 return 0;

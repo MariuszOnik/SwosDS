@@ -17,6 +17,13 @@ public static class TeamDataLoader
 {
     public const int PlayerInfoSize = 61;
 
+    // Added for step 11 (Bench.cs) -- same verbatim-copy rationale as the
+    // skill offsets below.
+    public const int OffSubstituted  = 0;
+    public const int OffPosition     = 4;
+    public const int OffFace         = 5;
+    public const int OffCards        = 10;
+
     public const int OffPassing      = 27;
     public const int OffShooting     = 28;
     public const int OffHeading      = 29;

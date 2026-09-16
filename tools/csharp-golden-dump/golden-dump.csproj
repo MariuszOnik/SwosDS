@@ -68,10 +68,13 @@
     <Compile Include="../../../openswos/game/scripts/Sim/Port/SpinningLogo.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerNameDisplay.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/Stats.cs" />
+    <!-- Bench.cs (full port, superseding BenchStub.cs; see
+         swos-vm-c/include/swos_bench.h for the full scope note). -->
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/Bench.cs" />
     <!-- MatchAudioStub.cs, TeamDataLoaderStub.cs, PlayerControlledStub.cs,
-         GodotStub.cs, AiStub.cs, BallSimStub.cs, GameLoopStub.cs,
-         BenchStub.cs (this directory) are auto-included by the SDK; see
-         each one's header comment for why BallUpdate.cs/BallOutOfPlay.cs/
+         GodotStub.cs, AiStub.cs, BallSimStub.cs, GameLoopStub.cs
+         (this directory) are auto-included by the SDK; see each one's
+         header comment for why BallUpdate.cs/BallOutOfPlay.cs/
          SpriteUpdate.cs/PlayerActions.cs/PlayerUpdate.cs/PlayerTackle.cs/
          UpdatePlayers.cs/GameTime.cs/Camera.cs/SpinningLogo.cs need a
          stand-in for those specific types rather than their real (larger,

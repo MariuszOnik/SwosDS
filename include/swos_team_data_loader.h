@@ -14,6 +14,13 @@
 // itself rather than calling GetPlayerInfoForSprite, so it needs the raw
 // offset constant here too, same as PlayerActions.cs.
 //
+// Step 11 (Bench.cs full port) extends this with OffSubstituted/OffCards/
+// OffFace -- the substitution eligibility checks (PlayerWasSubstituted,
+// IsPlayerOkToSelect/Substitute, FindInitialPlayerToBeSubstituted) and the
+// post-swap sprite-frame re-derivation (InitializePlayerSpriteFrameIndices)
+// read these three fields (comment-filtered-grep verified against the
+// whole file).
+//
 // Deliberately NOT ported here: TeamDataLoader.WritePlayerInfos and
 // WireTeamFields -- the functions that actually POPULATE PlayerInfo
 // records from a loaded team file at match setup. Those pull in a whole
@@ -29,6 +36,9 @@
 
 #define TDL_PLAYER_INFO_SIZE 61
 
+#define TDL_OFF_SUBSTITUTED  0   // byte -- PlayerInfo.substituted (0/1)
+#define TDL_OFF_CARDS        10  // byte -- PlayerInfo.cards (0/1/2; >=2 = sent off)
+#define TDL_OFF_FACE         5   // byte -- PlayerInfo.face (portrait/skin index)
 #define TDL_OFF_POSITION     4   // byte -- PlayerInfo.position (PlayerPosition enum, 0=goalkeeper)
 #define TDL_OFF_PASSING      27  // byte -- PlayerInfo.passing skill (0..7)
 #define TDL_OFF_SHOOTING     28  // byte -- PlayerInfo.shooting skill (0..7)
