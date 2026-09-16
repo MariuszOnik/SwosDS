@@ -597,6 +597,41 @@ and `.bss` 397,876 bytes (total runtime image about 460 KB, still with the
 384 KB VM memory buffer dominating `.bss`). No ARM-only alignment, arithmetic,
 optimization, or stack problem was observed.
 
+## Status: step 6A (2026-09-16) — `PlayerControlled.cs`, human-team paths
+
+The complete 1881-line `PlayerControlled.cs` control-flow body is now present
+as `swos_player_controlled.{h,c}`. Because the source is deliberately written
+like register-style C# (integer operations, labels, gotos, and Memory calls),
+`tools/convert_player_controlled.py` performs the mechanical API/type rewrite
+and generates the 1772-line C implementation. The generator is retained;
+generated control flow must not be hand-edited.
+
+All three public entries are ported: `RunControlledBranch`,
+`RunPassReceiptTrigger`, and `RunPassExpectingBranch`, including the private
+chase/friction helpers and 64-value `kBallFriction` table. The deferred duel
+telemetry calls in `PlayerActions` are now connected, and
+`FaithfulBallControl` has its step-6 owner.
+
+Real dependency slices were pulled forward for
+`PlayerHeader.PlayerAttemptingJumpHeader`/`AttemptStaticHeader` and
+`PlayerTackle.PlayerBeginTackling`; these are actual OpenSWOS bodies, not
+gameplay stubs.
+
+**Intentional 6A/6B boundary:** CPU-only calls to
+`AiBrain.SetControlsDirection` and `AiHelpers.AI_Kick` lead into step 9. C
+exposes explicit hooks; entering a CPU path before step 9 asserts instead of
+silently pretending AI ran. Step 6B installs the real AI implementations and
+adds CPU-team differential fixtures together with step 9.
+
+The golden harness now compiles the real, unmodified `PlayerControlled.cs`.
+Twelve human-team scenarios compare the complete 0x60000-byte Memory buffer:
+early penalty/break exits, stopped-direction handling, carrier ball pinning,
+pass-receipt guards and commits, goalkeeper back-pass, out-of-pitch cancel,
+plain chase, long-spin prediction, and receiver commit. **12/12 match C#
+byte-for-byte; the full desktop suite is 225/225.** The full source set also
+cross-compiles cleanly for ARM9 at `-O2` with zero warnings (build check; the
+21-check runtime checkpoint from step 5.5 remains the latest target run).
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
@@ -619,6 +654,9 @@ optimization, or stack problem was observed.
    (tiny) `PortPlayerState` enum, plus extensions to step 5's
    `TeamDataLoader`/`PlayerEnergy` slices.
 6. `PlayerControlled`
+   - ~~6A: human-team control/pass paths + real Header/Tackle slices~~
+     (2026-09-16, see Status above)
+   - 6B: CPU-only AI hooks — completed with step 9, without a temporary no-op
 7. `UpdatePlayers`
 8. `InputControls`
 9. `AiHelpers`, `AiBrain`

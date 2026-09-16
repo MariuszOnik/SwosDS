@@ -4,6 +4,7 @@
 // audio, PlayerControlled counters) and what was forward-pulled as a
 // minimal slice (TeamDataLoader offsets, PlayerEnergy).
 #include "swos_player_actions.h"
+#include "swos_player_controlled.h"
 #include "swos_addr.h"
 #include "swos_ball_sprite.h"
 #include "swos_ball_update.h"
@@ -270,8 +271,11 @@ void swosCalculateIfPlayerWinsBall(int direction, int teamBase, int playerAddr) 
         a6LoserTeam = swosReadSignedDword(a6LoserTeam + TEAMDATA_OFF_OPPONENTS_TEAM);
     }
 
-    // Telemetry omitted (PlayerControlled.IncSkillDuelOwnWin/OppWin -- zero
-    // Memory effect, see header).
+    // PlayerControlled.cs telemetry, now available since step 6A.
+    if (a6LoserTeam != teamBase)
+        swosPlayerControlledIncSkillDuelOwnWin();
+    else
+        swosPlayerControlledIncSkillDuelOppWin();
 
     // l_init_ball_winner_team (player.cpp:427-440).
     swosWriteWord(a6LoserTeam + 138 /* wonTheBallTimer */, 12);

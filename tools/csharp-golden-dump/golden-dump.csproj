@@ -39,6 +39,7 @@
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerActions.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerEnergy.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerUpdate.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerControlled.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/TeamPort.cs" />
     <!-- MatchAudioStub.cs, UpdateGoalsStub.cs, TeamDataLoaderStub.cs,
          PlayerControlledStub.cs, GodotStub.cs (this directory) are
@@ -47,6 +48,10 @@
          PlayerUpdate.cs need a stand-in for those specific types rather
          than their real (larger, Godot-dependent, or deliberately-deferred)
          source files. -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="PlayerControlledStub.cs" />
   </ItemGroup>
 
 </Project>

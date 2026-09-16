@@ -30,5 +30,6 @@ SpriteUpdateGolden.Run(outDir);
 BallUpdateGolden.Run(outDir);
 PlayerActionsGolden.Run(outDir);
 PlayerUpdateGolden.Run(outDir);
+PlayerControlledGolden.Run(outDir);
 
 return 0;

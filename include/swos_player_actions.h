@@ -15,26 +15,16 @@
 //     private C# statics (used for the --swos-smoke dev diagnostic) and
 //     never write to Memory/BallSprite/PlayerSprite/TeamData. Their one
 //     call site (RecordShot, from PlayerKickingBall) is simply omitted.
-//   - `FaithfulBallControl` -- declared (PlayerActions.cs:44) but never
-//     read anywhere in this file (grep-verified); a dead flag from this
-//     file's point of view.
+//   - `FaithfulBallControl` is consumed by PlayerControlled.cs and therefore
+//     lands with step 6A in swos_player_controlled.{h,c}.
 //   - MatchAudio.* calls (PlayKickSample/PlayGoodTackleComment/
 //     PlayHeaderComment/CancelGoodPass/EnqueueGoodPass) -- host-side audio,
 //     zero Memory effect, omitted at each call site with a comment. Where a
 //     function mixes audio with real Memory writes (StopGoodPassSample,
 //     EnqueuePlayingGoodPassSample), only the audio call is omitted -- the
 //     Memory-affecting logic is ported in full.
-//   - PlayerControlled.IncSkillDuelOppWin/IncSkillDuelOwnWin -- verified in
-//     PlayerControlled.cs to be one-line counters (`s_skillDuelOwnWin++;`)
-//     with zero Memory effect (that file is step 6, not ported yet
-//     otherwise). Omitted like the telemetry above.
-//     WATCH ITEM (raised in step-5 review): these counters live outside
-//     Memory, so the full-buffer differential tests can't see them and
-//     never will just by re-running this file's tests. That's fine as
-//     long as they stay pure telemetry. If PlayerControlled.cs (step 6)
-//     turns out to branch simulation behavior on their VALUES (not just
-//     increment them), wire the real counters in at that point -- don't
-//     let this omission quietly become stale just because it passed here.
+// PlayerControlled's duel counters, deferred during step 5, are wired to the
+// real step-6A telemetry structure by swos_player_actions.c.
 //
 // Forward-pulled MINIMAL slices (not full files -- see each header for why):
 //   - swos_team_data_loader.h: TeamDataLoader.cs's PlayerInfo offset
