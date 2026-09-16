@@ -28,6 +28,13 @@
 //     PlayerControlled.cs to be one-line counters (`s_skillDuelOwnWin++;`)
 //     with zero Memory effect (that file is step 6, not ported yet
 //     otherwise). Omitted like the telemetry above.
+//     WATCH ITEM (raised in step-5 review): these counters live outside
+//     Memory, so the full-buffer differential tests can't see them and
+//     never will just by re-running this file's tests. That's fine as
+//     long as they stay pure telemetry. If PlayerControlled.cs (step 6)
+//     turns out to branch simulation behavior on their VALUES (not just
+//     increment them), wire the real counters in at that point -- don't
+//     let this omission quietly become stale just because it passed here.
 //
 // Forward-pulled MINIMAL slices (not full files -- see each header for why):
 //   - swos_team_data_loader.h: TeamDataLoader.cs's PlayerInfo offset
