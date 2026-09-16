@@ -2256,3 +2256,41 @@ clean rebuild, zero warnings. `sdl-debug/` and `sprite-lab/`: unaffected
 RenderCommand pipeline at all, it's a plain-dot lockstep debug visualizer
 predating Phase 2). Visual confirmation on melonDS/hardware still the
 user's own next step.
+
+### Status: Phase 5 bugfix (2026-09-16) — shadow drew in front of the ball after sorting
+
+The user ran the sort-wiring build on real melonDS and noticed the ball's
+shadow now appeared to draw IN FRONT of the ball instead of underneath it.
+Real bug, not a misreading: `fillBallCommand()`'s shadow command has
+`worldY = ballY + ballZ/4 + 1 + BALL_SHADOW_OFFSET_Y`, and
+`BALL_SHADOW_OFFSET_Y` is `0` (recalibrated in the earlier Phase 4 bugfix,
+for the on-screen diagonal-offset MAGNITUDE, against a real hardware
+report) -- so at rest the shadow's own `worldY`/`sortKey` (`ballY + 1`) is
+numerically HIGHER than the ball's own (`ballY`). Plain ascending-worldY
+sort therefore placed the shadow AFTER the ball, i.e. drawn on top of it --
+inverted from the intended stacking.
+
+Checked the real engine instead of just patching the offset again:
+`swos-port/src/game/ball/ball.cpp:1074-1083`'s `updateBallShadow()` gives
+the shadow sprite its own large negative Z (`kBallShadowZ = -10`)
+specifically so it always sorts before the ball in the SAME generic
+Y-sort, independent of the diagonal screen-offset math -- its own comment:
+"the shadow sprite itself stays on a fixed drawing layer". This port
+already has exactly that mechanism, unused until now:
+`SwosRenderCommand.layer` (`SWOS_RENDER_LAYER_SHADOW = 1` vs
+`SWOS_RENDER_LAYER_SPRITE = 2`, present since Phase 2, `fillBallCommand`
+already sets it correctly) -- `swosRenderSortCommands()` just never
+consulted it, sorting purely by `.sortKey`. Fixed by making the comparison
+check `.layer` first (shadow always before sprite, unconditionally) and
+`.sortKey` only as the tie-break within a layer -- decouples "which
+diagonal offset looks right on screen" from "which layer draws first",
+instead of overloading one Y constant for both, which is what caused this.
+
+Added a regression test (`test_sort_commands_layer_beats_sortkey`) that
+constructs a shadow command with a deliberately LARGER sortKey than its
+sprite, to catch exactly this class of bug again. `make test`: 19/19.
+ARM9/BlocksDS (`nds-app/`): clean rebuild, zero warnings. `sdl-debug/`
+rebuilt (links `swos_render_commands.c` even though its own draw loop
+doesn't use the RenderCommand pipeline); `sprite-lab/` unaffected (doesn't
+call the sort at all). Visual confirmation on melonDS/hardware still the
+user's own next step.

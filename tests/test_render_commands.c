@@ -86,6 +86,25 @@ static void test_sort_commands_edge_cases(void) {
           "sort commands: fully-reversed input sorts correctly");
 }
 
+// Regression test for the real bug this caught: fillBallCommand's shadow
+// command has a HIGHER worldY/sortKey than the ball's own (ballY + ballZ/4
+// + 1 vs ballY -- see BALL_SHADOW_OFFSET_Y's own comment), so a sort by
+// sortKey alone puts the shadow AFTER (visually on top of) the ball --
+// backwards. layer must win over sortKey so the shadow (SWOS_RENDER_LAYER_
+// SHADOW) always sorts before the sprite it belongs to (SWOS_RENDER_LAYER_
+// SPRITE), no matter which one has the larger worldY.
+static void test_sort_commands_layer_beats_sortkey(void) {
+    SwosRenderCommand shadow = makeCmd(451, 0); // shadow's own sortKey is LARGER...
+    shadow.layer = SWOS_RENDER_LAYER_SHADOW;
+    SwosRenderCommand ball = makeCmd(450, 1); // ...than the ball's, on purpose
+    ball.layer = SWOS_RENDER_LAYER_SPRITE;
+
+    SwosRenderCommand cmds[2] = { ball, shadow }; // start in the "wrong" order too
+    swosRenderSortCommands(cmds, 2);
+    CHECK(cmds[0].layer == SWOS_RENDER_LAYER_SHADOW && cmds[1].layer == SWOS_RENDER_LAYER_SPRITE,
+          "sort commands: shadow layer always sorts before sprite layer, even with a larger sortKey");
+}
+
 static void test_build_frame(void) {
     swosMemoryInit(true);
 
@@ -176,6 +195,7 @@ int main(void) {
     test_sort_key();
     test_sort_commands_order();
     test_sort_commands_edge_cases();
+    test_sort_commands_layer_beats_sortkey();
     test_build_frame();
 
     if (g_failures) {

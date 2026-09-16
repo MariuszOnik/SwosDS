@@ -18,13 +18,32 @@ int32_t swosRenderSortKeyForWorldY(int32_t worldY) {
     return worldY;
 }
 
+// true if `a` must draw strictly before `b`: layer first (a shadow is
+// SWOS_RENDER_LAYER_SHADOW, always below SWOS_RENDER_LAYER_SPRITE, no
+// matter what its worldY-derived sortKey says -- see fillBallCommand's own
+// BALL_SHADOW_OFFSET_Y comment: the real engine's updateBallShadow() gives
+// the shadow sprite its own large negative Z specifically to keep it
+// sorting before the ball despite sharing the same Y-sort as everything
+// else ("the shadow sprite itself stays on a fixed drawing layer" --
+// swos-port/src/game/ball/ball.cpp:1079); this port's own
+// BALL_SHADOW_OFFSET_Y was recalibrated to 0 for a DIFFERENT reason (the
+// on-screen diagonal offset magnitude, per the Phase 4 bugfix), which as a
+// side effect put the shadow's sortKey ABOVE the ball's -- the `layer`
+// field exists precisely to keep those two concerns independent instead of
+// overloading one Y offset for both), then sortKey within a layer.
+static bool commandOrdersBefore(const SwosRenderCommand *a, const SwosRenderCommand *b) {
+    if (a->layer != b->layer)
+        return a->layer < b->layer;
+    return a->sortKey < b->sortKey;
+}
+
 void swosRenderSortCommands(SwosRenderCommand *commands, int count) {
     // Stable insertion sort -- see header note on why (small n, stability
     // over speed).
     for (int i = 1; i < count; i++) {
         SwosRenderCommand key = commands[i];
         int j = i - 1;
-        while (j >= 0 && commands[j].sortKey > key.sortKey) {
+        while (j >= 0 && commandOrdersBefore(&key, &commands[j])) {
             commands[j + 1] = commands[j];
             j--;
         }
