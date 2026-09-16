@@ -8,12 +8,19 @@
 #include "swos_addr.h"
 #include "swos_ball_update.h"
 #include "swos_memory.h"
+#include "swos_player_actions.h"
+#include "swos_player_sprite.h"
+#include "swos_referee.h"
+#include "swos_rng.h"
 #include "swos_team_data.h"
 #include "swos_team_port.h"
+
+#include "generated/swos_kickoff_data.h"
 
 static void swapWord(int fieldOffset);
 static void swapDword(int fieldOffset);
 static void resetPerTeamFieldsForNewHalf(int teamBase);
+static void kickoffInitTeamsData(void);
 
 // gameLoop.cpp:2113-2157 -- prepareForInitialKick.
 void swosKickoffPrepareForInitialKick(void)
@@ -114,4 +121,133 @@ static void swapDword(int fieldOffset)
     int32_t b = swosReadSignedDword(TEAMDATA_BOTTOM_BASE + fieldOffset);
     swosWriteDword(TEAMDATA_TOP_BASE + fieldOffset, (uint32_t)b);
     swosWriteDword(TEAMDATA_BOTTOM_BASE + fieldOffset, (uint32_t)a);
+}
+
+// PHASE 1 BOOTSTRAP-COMPLETENESS FOLLOW-UP (2026-09-16, see README.md
+// "Status: Phase 1"). game.cpp:551-705 -- InitPlayersBeforeEnteringPitch.
+void swosKickoffInitPlayersBeforeEnteringPitch(void)
+{
+    swosRefereeRemoveReferee();
+
+    int16_t teamPlayingUp = swosReadSignedWord(ADDR_teamPlayingUp);
+    int tableBase = teamPlayingUp == 1
+        ? PLSPR_TEAM1_TABLE_BASE
+        : PLSPR_TEAM2_TABLE_BASE;
+
+    int coordIndex = 0;
+
+    for (int teamPass = 0; teamPass < 2; teamPass++)
+    {
+        for (int i = 0; i < PLSPR_TEAM_SIZE; i++)
+        {
+            int spriteAddr = swosReadSignedDword(tableBase + i * 4);
+
+            int16_t coordX = kKTeamsStartingCoordinates[coordIndex * 2];
+            int16_t coordY = kKTeamsStartingCoordinates[coordIndex * 2 + 1];
+            coordIndex++;
+
+            if (spriteAddr == 0)
+                continue;
+
+            int16_t xPix = (int16_t)(coordX + 591);
+            swosWriteWord(spriteAddr + PLSPR_OFF_X + 2, (uint16_t)xPix);
+
+            int16_t yPix = (int16_t)(coordY + 449);
+            swosWriteWord(spriteAddr + PLSPR_OFF_Y + 2, (uint16_t)yPix);
+
+            xPix = (int16_t)(xPix + (swosRngNextByte() & 7));
+            swosWriteWord(spriteAddr + PLSPR_OFF_X + 2, (uint16_t)xPix);
+
+            swosWriteWord(spriteAddr + PLSPR_OFF_DEST_X, (uint16_t)xPix);
+            swosWriteWord(spriteAddr + PLSPR_OFF_DEST_Y, (uint16_t)yPix);
+
+            swosWriteWord(spriteAddr + PLSPR_OFF_Z + 2, 0);
+            swosWriteWord(spriteAddr + PLSPR_OFF_SPEED, 0);
+            swosWriteByte(spriteAddr + PLSPR_OFF_PLAYER_STATE, 0);
+            swosWriteByte(spriteAddr + PLSPR_OFF_PLAYER_DOWN_TIMER, 0);
+            swosWriteWord(spriteAddr + PLSPR_OFF_FRAME_INDEX, (uint16_t)-1);
+            swosWriteWord(spriteAddr + PLSPR_OFF_CYCLE_FRAMES_TIMER, 1);
+            swosWriteWord(spriteAddr + PLSPR_OFF_IMAGE_INDEX, (uint16_t)-1);
+            swosWriteWord(spriteAddr + PLSPR_OFF_DIRECTION, 0);
+            swosWriteWord(spriteAddr + PLSPR_OFF_ON_SCREEN, 1);
+
+            if (swosReadSignedWord(ADDR_gameState) == 21)
+            {
+                swosWriteWord(spriteAddr + PLSPR_OFF_SENT_AWAY, 0);
+                swosWriteWord(spriteAddr + PLSPR_OFF_CARDS, 0);
+                swosWriteWord(spriteAddr + PLSPR_OFF_INJURY_LEVEL, 0);
+            }
+
+            swosSetPlayerAnimationTable(spriteAddr, ADDR_playerNormalStandingAnimTable);
+        }
+
+        tableBase = teamPlayingUp == 2
+            ? PLSPR_TEAM1_TABLE_BASE
+            : PLSPR_TEAM2_TABLE_BASE;
+    }
+}
+
+// game.cpp:396-421 -- the InitTeamsData scalar-reset block, StartingMatch's
+// own private copy (same source block as swos_game_time.c's
+// initTeamsDataForExtraTime -- see that function's header comment; the C#
+// keeps two independent copies too, so this mirrors that duplication
+// rather than sharing one C helper across files).
+static void kickoffInitTeamsData(void)
+{
+    swosWriteDword(ADDR_currentScorer, 0);
+    swosWriteDword(ADDR_lastPlayerBeforeGoalkeeper, 0);
+    swosWriteWord(ADDR_goalScored, 0);
+    swosWriteWord(ADDR_runSlower, 0);
+    swosWriteWord(ADDR_whichCard, 0);
+    swosWriteDword(ADDR_bookedPlayer, 0);
+    swosWriteWord(ADDR_playerHadBall, 0);
+    swosWriteDword(ADDR_lastKeeperPlayed, 0);
+    swosWriteDword(ADDR_lastTeamPlayed, 0);
+    swosWriteDword(ADDR_lastPlayerPlayed, 0);
+    swosWriteWord(ADDR_penalty, 0);
+    swosWriteWord(ADDR_goalCameraMode, 0);
+    swosWriteWord(ADDR_goalOut, 0);
+    swosWriteWord(ADDR_gameNotInProgressCounterWriteOnly, 0);
+    swosWriteWord(ADDR_fireBlocked, 0);
+    swosWriteDword(ADDR_lastTeamPlayedBeforeBreak, 0);
+    swosWriteWord(ADDR_stoppageTimerTotal, 0);
+    swosWriteWord(ADDR_stoppageTimerActive, 0);
+    swosWriteWord(ADDR_stoppageEventTimer, 0);
+    swosWriteWord(ADDR_inGameCounter, 0);
+    swosWriteWord(ADDR_gameStatePl, 100);
+    swosWriteWord(ADDR_gameState, 100);
+    swosWriteWord(ADDR_breakState, 0);
+    swosWriteWord(ADDR_breakCameraMode, (uint16_t)-1);
+}
+
+// PHASE 1 BOOTSTRAP-COMPLETENESS FOLLOW-UP (2026-09-16). game.cpp:1450-1475
+// -- StartingMatch.
+void swosKickoffStartingMatch(void)
+{
+    const int kStartingBallX = 1672;
+    const int kStartingBallY = 449;
+    const int kInitialDelayBeforeKickOff = 100;
+
+    swosWriteWord(ADDR_halfNumber, 1);
+    swosWriteWord(ADDR_hideBall, 0);
+    swosSetBallPosition(kStartingBallX, kStartingBallY);
+
+    kickoffInitTeamsData();
+
+    swosWriteWord(ADDR_stoppageEventTimer, kInitialDelayBeforeKickOff);
+    swosWriteWord(ADDR_gameState, 21);
+    swosWriteWord(ADDR_gameStatePl, 101);
+    swosWriteDword(ADDR_lastTeamPlayedBeforeBreak, TEAMDATA_TOP_BASE);
+    swosWriteWord(ADDR_stoppageTimerTotal, 0);
+    swosWriteWord(ADDR_stoppageTimerActive, 0);
+
+    swosWriteWord(ADDR_breakCameraMode, (uint16_t)-1);
+    swosWriteWord(ADDR_cameraDirection, (uint16_t)-1);
+    swosWriteWord(ADDR_cameraXVelocity, 0);
+    swosWriteWord(ADDR_cameraYVelocity, 0);
+
+    swosTeamPortStopAllPlayers();
+    swosKickoffInitPlayersBeforeEnteringPitch();
+
+    swosWriteWord(ADDR_showFansCounter, 100);
 }

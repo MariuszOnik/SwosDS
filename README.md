@@ -1748,3 +1748,118 @@ SetMatchLength`, `Kickoff.StartingMatch`'s real
 `InitPlayersBeforeEnteringPitch` entrance sequence, `Bench.
 InitBenchBeforeMatch`) and re-run the lockstep to see whether the stall
 disappears entirely once the bootstrap actually matches production.
+
+### Status: Phase 1 follow-up, continued (2026-09-16) — the rest of the production bootstrap chain ported; stall root-caused, and it is NOT a bootstrap gap
+
+Per the user's explicit direction ("pull the rest of the bootstrap thread
+first"), every remaining piece listed above is now ported. New files:
+`include`/`src` `swos_pitch.{h,c}` (`Pitch.cs`, full file — two literal
+tables mechanically extracted via `tools/extract_all_arrays.py`, the
+12x7 seasonal table via a one-off Python regex-extract since the shared
+extractor only handles single-bracket `T[]`, not C#'s 2-D `byte[,]`),
+`swos_skill_scaling.{h,c}` (`SkillScaling.cs`, full file — a real
+dependency of `WritePlayerInfos` discovered while porting it, enabled by
+default in production; six literal tables mechanically extracted,
+`extract_all_arrays.py` extended with a `byte`/`uint` → `uint8_t`/`uint32_t`
+type map since it only supported `short` before), `swos_team_record.h`
+(a plain, non-Memory-mapped C struct standing in for `OpenSwos.Assets.
+TeamRecord`/`PlayerRecord` — no team-FILE parser exists in this repo, so
+callers still supply a synthetic roster, just now fed through the REAL
+loader instead of hand-poked bytes). Extended: `swos_team_data_loader.{h,c}`
+gained the real `WritePlayerInfos`/`WireTeamFields`/`GoalieSkillFromPrice`
+(previously offset-constants-only), `swos_player_energy.{h,c}` gained
+`SetMatchLength`/`SeedSlot`, `swos_kickoff.{h,c}` gained `StartingMatch`/
+`InitPlayersBeforeEnteringPitch` (+ its own private `InitTeamsData`
+scalar-reset copy, mirroring the C#'s own duplication of that block against
+`GameTime.cs`'s copy — while there, filled a small pre-existing gap in the
+GameTime-side copy, a `breakState` write that couldn't be ported before
+`ADDR_breakState` existed). `GameTime.SaveTeams`/`InitPlayerCardChance`/
+`DetermineStartingTeamAndTeamPlayingUp`/`InitPitchBallFactors`/
+`InitGameVariables` and `Bench.InitBenchBeforeMatch` turned out to be
+**already ported** (steps 10/11 — "every `initMatch()`-adjacent helper" —
+just never wired into a bootstrap before).
+
+**`match_bootstrap.c` and `Step12IntegrationGolden.cs`'s `Bootstrap()` were
+both rewritten to call this real sequence, in `Main.cs`'s real order**,
+replacing the old hand-poked `PlayerInfo`/sprite/`TeamData` stand-in
+entirely (no longer needed: `PlayerSprite.Init()`, already called by
+`Memory.Init()`, already assigns every sprite's team number/ordinal, and
+`Kickoff.StartingMatch()`'s `InitPlayersBeforeEnteringPitch()` now positions
+all 22 sprites at the real pitch-side entry line). The only still-synthetic
+input is the two 11-player rosters themselves (flat mid-range skills, one
+goalkeeper each) — every function downstream of that is the real,
+unmodified production code path.
+
+**First re-verification, `make lockstep-long`, all three seeds — found the
+"stall" was a false positive in this repo's OWN tooling, not a gameplay
+bug.** The first pass through this section (now superseded, kept below only
+as the record of how it was found) reported a stall at ~12000 ticks with
+`gameState = 25` (`ST_RESULT_ON_HALFTIME`, `GameLoop.cs:1680`) and the ball
+frozen at the off-pitch kickoff spot. Tracing the CPU auto-continue path
+(`GameLoop.cs:429-467`'s `l_not_waiting_on_player`, which exits
+`ST_RESULT_ON_HALFTIME` the instant either team's `TeamData.OffFirePressed`
+byte is set — checked BEFORE any human-input fallback — paired with
+`AiBrain.SetControlsDirection`'s `l_showing_result_on_halftime` branch,
+`AiBrain.cs:309-357`, already ported step 9, which sets exactly that byte
+once `stoppageTimerTotal >= Addr.m_clearResultInterval`) showed the wiring
+looked complete. Probing a dump PAST `lockstep_runner`'s old 300-tick
+"no-movement" stall cutoff (`--lockstep-dump 0 12100 ...`) confirmed it
+directly: by tick 12100, `gameState/gameStatePl` had already moved to
+`0/0` (`ST_PLAYERS_TO_INITIAL_POSITIONS`, the second-half kickoff) and the
+ball was back at the centre spot — **the match was never stuck at all**.
+`Memory.Addr.m_clearResultInterval` is 660 ticks (~9.4 real seconds at
+70 Hz) in this synthetic bootstrap; the old 300-tick stall threshold
+(inherited from `sdl-debug`'s own convention, written for a DIFFERENT kind
+of stall) was simply shorter than that legitimate half-time dwell, so it
+misfired. Fixed: `kStallTicks`/`STALL_TICKS` raised from 300 to 2000 in
+both `Step12IntegrationGolden.cs` and `tools/lockstep_runner.c` — safely
+above any single known dwell interval.
+
+**Second re-verification, with the corrected threshold — the "stall" this
+time is the real, correct end of a complete 90-minute match.** All three
+seeds now run roughly DOUBLE the ticks before the detector fires again:
+
+| seed | ticks matched |
+|---|---|
+| 0 | 27475 (frozen from tick 25475) |
+| 12345 | 27030 (frozen from tick 25030) |
+| 987654321 | 26637 (frozen from tick 24637) |
+
+C matches C# byte-for-byte through every one of these ticks. Probing the
+frozen state directly (seed 0, tick 27475): `gameState = 26`
+(`ST_RESULT_AFTER_THE_GAME`), `gt_gameTimeInMinutes = 90` (a full match
+played), **`playGame = 0`** — `GameLoop.cs`'s own `gameState == 26` branch
+(`GameLoop.cs:483-490`) sets `playGame = 0` once `firePressed` fires, which
+is precisely the original game's own "match is over" signal. `team1
+TotalGoals/team2TotalGoals = 0/1` — a real goal, scored by the simulation
+at tick 17838 (mid-second-half), confirmed by scanning the golden log for
+the score-delta tick, not just read at the end. In short: the C port,
+driven end-to-end by a bootstrap that now matches real production, plays a
+complete, well-formed 90-minute AI-vs-AI match — kickoff, open play, a
+scored goal, half-time, second half, full-time — entirely correctly and
+byte-identically to the real OpenSWOS C#, then correctly stops simulating
+once the match is legitimately over. There is nothing further to chase
+here: this is success, not a stall.
+
+`make test`: 17/17 (still 497 checks — this follow-up added no new
+differential-test scenarios of its own; the existing
+`test_step12_integration_golden`/lockstep suites already exercise every new
+function end-to-end). ARM9/BlocksDS (`nds-app/`) and `sdl-debug/`: both
+clean rebuilds, zero warnings.
+
+**Final report, kept separate per the plan's own instruction:**
+- **C port fidelity vs the real OpenSWOS C#:** proven for all three seeds,
+  through an ENTIRE real production bootstrap plus a complete 90-minute
+  match (kickoff through full-time, including a scored goal and the
+  half-time interval) — zero remaining known discrepancies.
+- **Bootstrap correctness:** now matches real production
+  (`InitSwosVmFromMatchSetup`) call-for-call, with a synthetic (not
+  team-file-loaded) roster as the only remaining stand-in. Confirmed
+  sufficient to run a full, correct match — not just plausible.
+- **The AI-vs-AI "stall" (resolved):** was never a gameplay bug — it was
+  this repo's own stall-detection threshold, inherited from `sdl-debug`
+  and too short for the half-time result screen's legitimate dwell.
+  Fixed (300 → 2000 ticks). The genuinely no-longer-changing state after
+  that is the correct, designed end of the match.
+- **OpenSWOS vs the original SWOS:** still out of scope, still not
+  investigated.

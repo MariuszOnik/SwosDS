@@ -32,6 +32,7 @@
 // "identical synthetic setup" literally identical across seeds while still
 // giving each seed its own RNG-driven match.
 using System.Reflection;
+using OpenSwos.Assets;
 using OpenSwos.Sim.Port;
 using OpenSwos.SwosVm;
 
@@ -39,155 +40,129 @@ public static class Step12IntegrationGolden
 {
     private const int kMemSize = 0x60000;
 
-    // Same layout as match_bootstrap.c's PLAYERINFO_TOP_BASE/PLAYERINFO_BOTTOM_BASE.
-    private const int PlayerInfoTopBase = 0x51000;
-    private const int PlayerInfoBottomBase = 0x51400;
-    private const int PlayerInfoSize = 61; // TeamDataLoader.PlayerInfoSize
+    // PHASE 1 BOOTSTRAP-COMPLETENESS FOLLOW-UP (2026-09-16, see README.md
+    // "Status: Phase 1"): Bootstrap() now runs the REAL production sequence
+    // -- Main.cs's InitSwosVmFromMatchSetup, read in full and matched call
+    // for call (SaveTeams/InitPlayerCardChance/DetermineStartingTeamAndTeam
+    // PlayingUp/Pitch.SetPitchTypeAndNumber/InitPitchBallFactors/
+    // TimeDeltaOverride/InitGameVariables/WritePlayerInfos/WireTeamFields/
+    // PlayerEnergy.EffectEnabled+SetMatchLength/Result.ResetResult/
+    // TacticsLoader.LoadAllTactics/team{1,2}Computer/Kickoff.StartingMatch/
+    // playGame/Bench.InitBenchBeforeMatch/Camera.SetCameraToInitialPosition)
+    // -- rather than a hand-poked stand-in for it. The ONLY input this file
+    // still synthesizes is the two TeamRecord rosters themselves (real
+    // team-FILE parsing is not ported anywhere in this repo); everything
+    // downstream of that is the real, unmodified production code path.
+    // This SUPERSEDES the old SeedPlayerInfo/SeedTeamSprites/SeedTeamData
+    // hand-poking (removed) -- PlayerSprite.Init() (already called by
+    // Memory.Init) already assigns every sprite's team number/ordinal, and
+    // Kickoff.StartingMatch()'s InitPlayersBeforeEnteringPitch() now
+    // positions all 22 sprites at the real entry line, so no manual sprite
+    // seeding is needed at all.
 
-    // Same hand-picked placeholder formation as match_bootstrap.c (NOT
-    // OpenSWOS's own starting-position tables -- see that file's header for
-    // why). Index 0 = goalkeeper (ordinal 1), 1..10 = outfielders (ordinal 2..11).
-    private static readonly int[] TopFormationX = { 336, 150, 280, 392, 522, 150, 280, 392, 522, 250, 422 };
-    private static readonly int[] TopFormationY = { 40, 160, 160, 160, 160, 280, 280, 280, 280, 380, 380 };
-    private static readonly int[] BottomFormationX = { 336, 150, 280, 392, 522, 150, 280, 392, 522, 250, 422 };
-    private static readonly int[] BottomFormationY = { 808, 688, 688, 688, 688, 568, 568, 568, 568, 468, 468 };
+    // BuildTeamRecord's synthetic roster: flat mid-range skills (4/7) and a
+    // simple back-four/midfield/attack position shape, same spirit as the
+    // OLD hand-poked bootstrap's flat skill=4 values -- NOT a claim of
+    // realism, just enough shape (valid position enum per slot, a keeper)
+    // for the real WritePlayerInfos/SkillScaling/GoalieSkillFromPrice
+    // pipeline to have something sensible to scale.
+    private static readonly string[] SyntheticPositions =
+        { "G", "RB", "D", "D", "LB", "RW", "M", "M", "LW", "A", "A" };
 
-    // Same byte offsets as swos_team_data_loader.h's TDL_OFF_* constants.
-    private const int OffSubstituted = 0, OffPosition = 4, OffFace = 5, OffCards = 10;
-    private const int OffPassing = 27, OffShooting = 28, OffHeading = 29, OffTackling = 30;
-    private const int OffBallControl = 31, OffSpeed = 32, OffFinishing = 33, OffGoalieSkill = 34;
-
-    private static void SeedPlayerInfo(int baseAddr)
+    private static TeamRecord BuildTeamRecord(string name)
     {
+        var players = new List<PlayerRecord>();
         for (int i = 0; i < 11; i++)
         {
-            int addr = baseAddr + i * PlayerInfoSize;
-            Memory.WriteByte(addr + OffSubstituted, 0);
-            Memory.WriteByte(addr + OffCards, 0);
-            Memory.WriteByte(addr + OffFace, 0);
-            Memory.WriteByte(addr + OffPosition, i == 0 ? 0 : 1);
-            Memory.WriteByte(addr + OffPassing, 4);
-            Memory.WriteByte(addr + OffShooting, 4);
-            Memory.WriteByte(addr + OffHeading, 4);
-            Memory.WriteByte(addr + OffTackling, 4);
-            Memory.WriteByte(addr + OffBallControl, 4);
-            Memory.WriteByte(addr + OffSpeed, 4);
-            Memory.WriteByte(addr + OffFinishing, 4);
-            Memory.WriteByte(addr + OffGoalieSkill, 4);
+            players.Add(new PlayerRecord
+            {
+                ShirtNumber = (byte)(i + 1),
+                Name = $"P{i + 1}",
+                Position = SyntheticPositions[i],
+                Passing = 4, Shooting = 4, Heading = 4, Tackling = 4,
+                Control = 4, Speed = 4, Finishing = 4,
+                ValueCode = 20,
+                Stamina = 7,
+                FatigueCarry = 0,
+                InjurySeverity = 0,
+            });
         }
+        return new TeamRecord { Name = name, Players = players };
     }
 
-    private static void SeedTeamSprites(bool top, int[] fx, int[] fy)
-    {
-        int firstSlot = PlayerSprite.FirstSlotForTeam(top);
-        int initialDir = top ? 4 : 0;
-
-        for (int i = 0; i < 11; i++)
-        {
-            int slot = firstSlot + i;
-            PlayerSprite.SetTeamNumber(slot, top ? 1 : 2);
-            PlayerSprite.SetPlayerOrdinal(slot, i + 1);
-            PlayerSprite.SetX(slot, fx[i] << 16);
-            PlayerSprite.SetY(slot, fy[i] << 16);
-            PlayerSprite.SetDirection(slot, initialDir);
-            PlayerSprite.SetPlayerState(slot, 0); // PLSTATE_NORMAL
-            PlayerSprite.SetImageIndex(slot, 0);
-        }
-    }
-
-    // Same default the real production loader uses --
-    // TeamDataLoader.WireTeamFields's defaultTacticsIndex parameter defaults
-    // to 5 (4-3-3), Main.cs never overrides it. See Bootstrap()'s PHASE 1
-    // comment for why this now matters (paired with TacticsLoader.LoadAllTactics()).
-    private const int DefaultTacticsIndex = 5;
-
-    private static void SeedTeamData(bool top, int playerInfoBase)
-    {
-        int teamBase = TeamData.Base(top);
-        Memory.WriteDword(teamBase + TeamData.OffInGameTeamPtr, playerInfoBase);
-        // playerNumber=0 on both teams -> both AI-controlled, matching
-        // match_bootstrap.c's first AI-vs-AI milestone.
-        Memory.WriteWord(teamBase + TeamData.OffPlayerNumber, 0);
-        // PHASE 1 BOOTSTRAP FIX (2026-09-16): was never set at all
-        // (implicitly 0 = tact_4_4_2 via Memory.Init's zero-fill) -- now
-        // matches the real production default, mirrored exactly in
-        // match_bootstrap.c's seedTeamData().
-        Memory.WriteWord(teamBase + TeamData.OffTactics, DefaultTacticsIndex);
-
-        if (top)
-            Memory.WriteDword(Memory.Addr.topTeamInGame, playerInfoBase);
-        else
-            Memory.WriteDword(Memory.Addr.bottomTeamInGame, playerInfoBase);
-    }
-
-    // Mirrors match_bootstrap.c's dsBootstrapMatch() MINUS the bug that
-    // function had (forcing gameStatePl/breakCameraMode past
-    // PrepareForInitialKick()'s own real state) -- this is what
-    // dsBootstrapMatch() does now, after the ETAP 0 fix.
-    //
     // seed: applied via Rng.Reseed(seed) IMMEDIATELY after Memory.Init(),
-    // i.e. BEFORE any of the seeding/Kickoff/Camera calls below -- not
-    // after them. Two reasons:
-    //   1. Kickoff.PrepareForInitialKick() itself draws real Rng bytes
-    //      (teamPlayingUp/teamStarting coin-flip, kickoff-formation jitter
-    //      -- Kickoff.cs:130/134/193), so reseeding before it lets the
-    //      chosen seed genuinely govern the WHOLE match, kickoff side
-    //      included, not just ticks from GameLoop.Tick() onward.
-    //   2. Memory.Init(true) already ends with an internal
-    //      Rng.Reseed(ReadWord(Addr.currentGameTick)) (Memory.cs:2268),
-    //      which is Rng.Reseed(0) on a fresh Init (currentGameTick==0).
-    //      Calling Rng.Reseed(0) again right after Init() is therefore a
-    //      pure no-op for seed=0 -- byte-identical to every dump this file
-    //      produced before Phase 1 -- while Rng.Reseed(seed) for any other
-    //      seed cleanly overrides that internal default.
-    // SeedPlayerInfo/SeedTeamSprites/SeedTeamData draw no Rng bytes, so the
-    // synthetic setup itself (formation, PlayerInfo, TeamData) stays
-    // BIT-IDENTICAL across seeds, exactly as the Phase 1 plan requires --
-    // only the seed changes.
+    // i.e. BEFORE any of the real production calls below -- every one of
+    // GameTime.DetermineStartingTeamAndTeamPlayingUp/Pitch.SetPitchType
+    // AndNumber/WritePlayerInfos(via SkillScaling)/Kickoff.StartingMatch
+    // draws real Rng bytes, so reseeding first lets the chosen seed
+    // genuinely govern the WHOLE match. Memory.Init(true) already ends with
+    // an internal Rng.Reseed(ReadWord(Addr.currentGameTick)) (Memory.cs:2268),
+    // i.e. Rng.Reseed(0) on a fresh Init -- calling Rng.Reseed(0) again
+    // right after is a no-op for seed=0, while Rng.Reseed(seed) for any
+    // other seed cleanly overrides it. BuildTeamRecord draws no Rng bytes,
+    // so the two rosters themselves stay BIT-IDENTICAL across seeds --
+    // only the seed changes, exactly as the Phase 1 plan requires.
     private static void Bootstrap(int seed)
     {
         Memory.Init(pcMode: true);
         Rng.Reseed(seed);
 
         // Explicit reset of C#-side statics outside Memory this file's
-        // dependency chain is known to touch (see README "RNG and
-        // static-state discipline" notes from steps 9-11B), per the Phase 1
-        // plan's explicit "jawny reset statyków poza Memory" step -- each
-        // process invocation of this tool only ever calls Bootstrap() once
-        // (one seed per process, see Program.cs's --lockstep-log/
-        // --lockstep-dump dispatch), so these are defensive, not currently
-        // load-bearing. GameTime.ResetGameTime()/UpdatePlayers.
-        // ResetFallbackCounters() only touch already-zero Memory slots /
-        // already-default C# statics on a freshly-Init'd buffer, so they're
-        // safe no-ops here. Result.ResetResult(team1Name, team2Name) is
-        // DELIBERATELY NOT called: it writes team-name-DERIVED bytes into
-        // Memory (res_team1NameLength etc.) that match_bootstrap.c's C
-        // bootstrap has no equivalent for (no team-name concept exists in
-        // the synthetic setup) -- calling it here would silently diverge
-        // this file's dumps from the C port with no way to match on the C
-        // side, exactly the kind of asymmetry Phase 1 must not introduce.
+        // dependency chain touches, per the Phase 1 plan's explicit "jawny
+        // reset statyków poza Memory" step -- each process invocation of
+        // this tool only ever calls Bootstrap() once (one seed per
+        // process), so these are defensive, not currently load-bearing.
         GameTime.ResetGameTime();
         UpdatePlayers.ResetFallbackCounters();
 
-        SeedPlayerInfo(PlayerInfoTopBase);
-        SeedPlayerInfo(PlayerInfoBottomBase);
+        // ---- Main.cs InitSwosVmFromMatchSetup, in its real order --------
+        GameTime.SaveTeams();
+        GameTime.InitPlayerCardChance();
+        GameTime.DetermineStartingTeamAndTeamPlayingUp();
+        Pitch.SetPitchTypeAndNumber();
+        GameTime.InitPitchBallFactors();
 
-        SeedTeamSprites(true, TopFormationX, TopFormationY);
-        SeedTeamSprites(false, BottomFormationX, BottomFormationY);
+        // Main.cs: TimeDeltaOverride = clamp(2700 / max(1, SecondsPerHalf), 1, 70),
+        // with the default match-length preset (180s total, 90s/half):
+        // clamp(2700/90, 1, 70) = 30.
+        GameTime.TimeDeltaOverride = 30;
+        GameTime.InitGameVariables();
 
-        SeedTeamData(true, PlayerInfoTopBase);
-        SeedTeamData(false, PlayerInfoBottomBase);
+        var topTeam = BuildTeamRecord("TOP");
+        var bottomTeam = BuildTeamRecord("BOTTOM");
+        const bool topIsHuman = false, bottomIsHuman = false; // AI-vs-AI, matches match_bootstrap.c's milestone
 
-        // PHASE 1 BOOTSTRAP FIX (2026-09-16): mirrors match_bootstrap.c's
-        // matching call -- the real InitSwosVmFromMatchSetup (Main.cs) calls
-        // TacticsLoader.LoadAllTactics() before Kickoff.StartingMatch();
-        // this synthetic bootstrap never did, leaving teamTacticsPool
-        // entirely zero (see this file's Phase 1 header comment / README.md
-        // "Status: Phase 1" for the audit that found this). Same call point
-        // here, before Kickoff.PrepareForInitialKick() below.
+        TeamDataLoader.WritePlayerInfos(Memory.Addr.team1InGameTeamPlayers, topTeam, topIsHuman);
+        TeamDataLoader.WritePlayerInfos(Memory.Addr.team2InGameTeamPlayers, bottomTeam, bottomIsHuman);
+        TeamDataLoader.WireTeamFields(top: true, team: topTeam,
+            playersBaseAddr: Memory.Addr.team1InGameTeamPlayers,
+            shotChanceTableAddr: Memory.Addr.team1ShotChanceTable,
+            nameStorageAddr: Memory.Addr.team1NameStorage,
+            isHumanControlled: topIsHuman);
+        TeamDataLoader.WireTeamFields(top: false, team: bottomTeam,
+            playersBaseAddr: Memory.Addr.team2InGameTeamPlayers,
+            shotChanceTableAddr: Memory.Addr.team2ShotChanceTable,
+            nameStorageAddr: Memory.Addr.team2NameStorage,
+            isHumanControlled: bottomIsHuman);
+
+        // Main.cs: PlayerEnergy.EffectEnabled = _fatigueSim || _competitionMatchPending;
+        // both default false for a non-career, non-fatigue-sim match.
+        PlayerEnergy.EffectEnabled = false;
+        PlayerEnergy.SetMatchLength(180); // TotalMatchSeconds, default preset
+
+        Result.ResetResult(topTeam.Name, bottomTeam.Name);
+
         TacticsLoader.LoadAllTactics();
 
-        Kickoff.PrepareForInitialKick();
+        // Main.cs: team1Computer/team2Computer = topHuman/bottomHuman ? 0 : -1;
+        // both AI here.
+        Memory.WriteWord(Memory.Addr.team1Computer, topIsHuman ? 0 : -1);
+        Memory.WriteWord(Memory.Addr.team2Computer, bottomIsHuman ? 0 : -1);
+
+        Kickoff.StartingMatch();
+        Memory.WriteWord(Memory.Addr.playGame, 1);
+
+        Bench.InitBenchBeforeMatch();
         Camera.SetCameraToInitialPosition();
     }
 
@@ -293,7 +268,19 @@ public static class Step12IntegrationGolden
         return pos;
     }
 
-    private const int kStallTicks = 300;
+    // PHASE 1 BOOTSTRAP-COMPLETENESS FOLLOW-UP (2026-09-16): was 300 (matching
+    // sdl-debug's own stall convention), which turned out to be a FALSE
+    // POSITIVE here -- ball/player positions legitimately freeze during
+    // ST_RESULT_ON_HALFTIME (gameState 25) for up to
+    // Memory.Addr.m_clearResultInterval ticks (660 in this synthetic
+    // bootstrap) before AiBrain.SetControlsDirection's CPU auto-continue
+    // path fires and the match proceeds into the second half -- confirmed
+    // by probing a dump past the old 300-tick cutoff (see README.md
+    // "Status: Phase 1 follow-up, continued" for the full trace). 2000
+    // gives comfortable margin above any single known dwell interval
+    // (clearResultInterval/clearResultHalftimeInterval) without being so
+    // large that a GENUINE stall takes forever to confirm.
+    private const int kStallTicks = 2000;
 
     // Runs Bootstrap(seed) then up to maxTicks GameLoop.Tick() calls,
     // writing one WriteTickRecord per tick to outPath. Stops early (per the

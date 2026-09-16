@@ -44,10 +44,23 @@ int swosPlayerEnergyKeeperSkillPenalty(int spriteAddr);
 
 // PlayerEnergy.cs:89-109. Per-tick energy drain while a player is moving
 // (always runs -- not gated on EffectEnabled, so the energy bar reflects
-// drain even when the speed EFFECT is off). SetMatchLength (PlayerEnergy.cs:58-63)
-// is not called from any file ported so far, so the match-length
-// normalisation this uses stays at its C# default (1/1, i.e. no-op).
+// drain even when the speed EFFECT is off). Divisor is scaled by whatever
+// swosPlayerEnergySetMatchLength() last set (1/1, i.e. no-op, until called).
 void swosPlayerEnergyDrainSlot(int spriteAddr);
+
+// PlayerEnergy.cs:58-63 (PHASE 1 bootstrap-completeness follow-up,
+// 2026-09-16 -- see README.md "Status: Phase 1"). Scales DrainSlot's
+// divisor so the total fatigue arc over a match is the same regardless of
+// selected match length (reference: a 3-min-per-half, 360-second match).
+// totalMatchSeconds <= 0 resets to the 1/1 no-op default.
+void swosPlayerEnergySetMatchLength(int totalMatchSeconds);
+
+// PlayerEnergy.cs:70-84 (PHASE 1 bootstrap-completeness follow-up). Seeds
+// one physical sprite slot's starting energy from career stamina (0..7,
+// clamped) and carried between-match fatigue (0..100, clamped) -- non-career
+// callers pass stamina=7, fatigueCarry=0 for full energy. Called from
+// TeamDataLoader.WritePlayerInfos, once per player, at match setup.
+void swosPlayerEnergySeedSlot(int globalSlot, int stamina, int fatigueCarry);
 
 // PlayerEnergy.cs:190-198. Costs the tackled player a random 1..5% of
 // current energy. Gated on g_swosPlayerEnergyEffectEnabled.

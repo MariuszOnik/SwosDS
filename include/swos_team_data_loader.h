@@ -21,25 +21,34 @@
 // read these three fields (comment-filtered-grep verified against the
 // whole file).
 //
-// Deliberately NOT ported here: TeamDataLoader.WritePlayerInfos and
-// WireTeamFields -- the functions that actually POPULATE PlayerInfo
-// records from a loaded team file at match setup. Those pull in a whole
-// separate subsystem (OpenSwos.Assets.TeamRecord/PlayerRecord -- team-file
-// parsing, SkillScaling.cs, TeamPort.cs, PlayerEnergy.SeedSlot, and a
-// Godot.GD.Print debug call) that is about LOADING TEAMS, not about
-// per-tick MATCH SIMULATION -- a different layer from what PlayerActions.cs
-// (and this port, so far) is doing. GetPlayerInfoForSprite works correctly
-// against a PlayerInfo block populated by any means (in tests: poked
-// directly into Memory at the expected offsets), so this slice does not
-// depend on WritePlayerInfos/WireTeamFields ever running.
+// PHASE 1 BOOTSTRAP-COMPLETENESS FOLLOW-UP (2026-09-16): WritePlayerInfos/
+// WireTeamFields ARE now ported below -- see README.md "Status: Phase 1"
+// for the audit that motivated it. Real team-FILE parsing is still NOT
+// ported (no ADF/TEAM.* reader exists in this repo) -- callers supply a
+// SwosTeamRecord (swos_team_record.h), a plain data-transport struct that
+// stands in for a loaded TeamRecord, same as before. SkillScaling.cs (the
+// price/skill-scaling pipeline, enabled by default) and PlayerEnergy.SeedSlot
+// are both real dependencies and are ported too (swos_skill_scaling.h,
+// swos_player_energy.h). The debug Godot.GD.Print call at the end of
+// WritePlayerInfos (a one-line skill-sum diagnostic, zero Memory effect) is
+// omitted, same pattern as every other GD.Print in this port.
 #pragma once
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "swos_team_record.h"
 
 #define TDL_PLAYER_INFO_SIZE 61
 
 #define TDL_OFF_SUBSTITUTED  0   // byte -- PlayerInfo.substituted (0/1)
+#define TDL_OFF_INDEX        1   // byte -- PlayerInfo.index (roster index in the team FILE)
+#define TDL_OFF_GOALS_SCORED 2   // byte -- PlayerInfo.goalsScored
+#define TDL_OFF_SHIRT_NUMBER 3   // byte -- PlayerInfo.shirtNumber
 #define TDL_OFF_CARDS        10  // byte -- PlayerInfo.cards (0/1/2; >=2 = sent off)
 #define TDL_OFF_FACE         5   // byte -- PlayerInfo.face (portrait/skin index)
 #define TDL_OFF_POSITION     4   // byte -- PlayerInfo.position (PlayerPosition enum, 0=goalkeeper)
+#define TDL_OFF_SHORT_NAME   12  // 15 bytes -- PlayerInfo.shortName
 #define TDL_OFF_PASSING      27  // byte -- PlayerInfo.passing skill (0..7)
 #define TDL_OFF_SHOOTING     28  // byte -- PlayerInfo.shooting skill (0..7)
 #define TDL_OFF_HEADING      29  // byte -- PlayerInfo.heading skill (0..7)
@@ -48,3 +57,23 @@
 #define TDL_OFF_SPEED        32  // byte -- PlayerInfo.speed skill (0..7)
 #define TDL_OFF_FINISHING    33  // byte -- PlayerInfo.finishing skill (0..7)
 #define TDL_OFF_GOALIE_SKILL 34  // byte -- PlayerInfo.goalieSkill (0..7)
+#define TDL_OFF_INJURIES_BITS 35 // byte -- PlayerInfo.injuriesBitfield
+#define TDL_OFF_FULL_NAME    38  // 23 bytes -- PlayerInfo.fullName
+
+// TeamDataLoader.cs:85-263 (WritePlayerInfos). Writes 16 PlayerInfo records
+// starting at playersBase (matches team1InGameTeamPlayers/
+// team2InGameTeamPlayers). `team` may be NULL (no-op, matches the C#'s
+// `if (team is null) return`).
+void swosTeamDataLoaderWritePlayerInfos(int playersBase, const SwosTeamRecord *team,
+                                         bool isHumanControlled);
+
+// TeamDataLoader.cs:268-322 (WireTeamFields). Wires TeamData's
+// inGameTeamPtr/teamNumber/tactics/playerNumber/shotChanceTable, and the
+// display name used by the result screen.
+void swosTeamDataLoaderWireTeamFields(bool top, const SwosTeamRecord *team,
+                                       int playersBaseAddr, int shotChanceTableAddr,
+                                       int nameStorageAddr, bool isHumanControlled,
+                                       int defaultTacticsIndex);
+
+// TeamDataLoader.cs:346-357 (GoalieSkillFromPrice).
+uint8_t swosTeamDataLoaderGoalieSkillFromPrice(int priceCode, bool top);

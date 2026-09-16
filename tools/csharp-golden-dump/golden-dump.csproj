@@ -80,6 +80,19 @@
          but the whole file compiles fine here, self-contained, no stub
          needed). -->
     <Compile Include="../../../openswos/game/scripts/Sim/Port/TacticsLoader.cs" />
+    <!-- Phase 1 bootstrap-completeness follow-up (2026-09-16, continued):
+         Pitch.cs, SkillScaling.cs (WritePlayerInfos's real dependency,
+         enabled by default), TeamDataLoader.cs (the real loader, replacing
+         the old hand-poked PlayerInfo bytes), Bench.cs is already included
+         above (step 11). TeamRecord/PlayerRecord (Assets/) are plain data
+         types, no Compile entry needed (auto-included by the SDK glob). -->
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/Pitch.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/SkillScaling.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/TeamDataLoader.cs" />
+    <!-- TeamRecord/PlayerRecord: plain data types WritePlayerInfos,
+         WireTeamFields and SkillScaling consume, outside the project's own
+         directory tree so the SDK's default glob doesn't reach it. -->
+    <Compile Include="../../../openswos/game/scripts/Assets/TeamRecord.cs" />
     <!-- MatchAudioStub.cs, TeamDataLoaderStub.cs, PlayerControlledStub.cs,
          GodotStub.cs, AiStub.cs, BallSimStub.cs (this directory) are
          auto-included by the SDK; see each one's header comment for why
@@ -97,6 +110,10 @@
     <!-- AiHelpers.cs/AiBrain.cs (added above, step 9) now provide the real
          AiBrain/AiHelpers classes, so the step-6A throw-stub would collide. -->
     <Compile Remove="AiStub.cs" />
+    <!-- TeamDataLoader.cs (added above, Phase 1 bootstrap follow-up) now
+         provides the real TeamDataLoader class, so the step-5 stand-in
+         would collide. -->
+    <Compile Remove="TeamDataLoaderStub.cs" />
   </ItemGroup>
 
 </Project>

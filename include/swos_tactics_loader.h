@@ -24,8 +24,20 @@
 // evidence directly implicates.
 #pragma once
 
+#include <stdint.h>
+
 // Populates Memory.Addr.teamTacticsPool with all 19 tactic slots: 0-11 from
 // the 12 built-in formations (literal data, TacticsLoader.cs's own
 // swos.asm:208980-209340 citations), 12-18 (USER_A..F +
 // editTacticsCurrentTactics) zeroed -- matching swos.asm's InitUserTactics.
 void swosTacticsLoaderLoadAllTactics(void);
+
+#define TACTICS_LOADER_NUM_BUILTIN_TACTICS 12
+
+// TacticsLoader.BuiltinTactics[index] -- exposed for SkillScaling.cs's
+// ComputePlayerPrice, which indexes the raw 370-byte built-in table
+// directly by a team's file tactics byte (a different use than
+// LoadAllTactics' own pool-populating loop). Returns NULL if index is out
+// of 0..11 range (mirrors ComputePlayerPrice's own bounds check, which
+// falls back to an all-zero table in that case -- see swos_skill_scaling.c).
+const uint8_t *swosTacticsLoaderBuiltinTactics(int index);

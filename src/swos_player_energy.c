@@ -10,6 +10,21 @@ bool g_swosPlayerEnergyEffectEnabled = false;
 
 #define PLAYER_ENERGY_MAX 4096
 
+// PlayerEnergy.cs:70-84.
+void swosPlayerEnergySeedSlot(int globalSlot, int stamina, int fatigueCarry) {
+    if (globalSlot < 0 || globalSlot >= PLSPR_TOTAL_SLOTS) return;
+    int s = stamina < 0 ? 0 : (stamina > 7 ? 7 : stamina);
+    int fc = fatigueCarry < 0 ? 0 : (fatigueCarry > 100 ? 100 : fatigueCarry);
+    int initial = PLAYER_ENERGY_MAX - fc * (PLAYER_ENERGY_MAX * 6 / 10) / 100 - (7 - s) * 24;
+    int floor = PLAYER_ENERGY_MAX * 4 / 10;
+    if (initial < floor) initial = floor;
+    if (initial > PLAYER_ENERGY_MAX) initial = PLAYER_ENERGY_MAX;
+    int base_ = swosPlayerSpriteBase(globalSlot);
+    swosWriteWord(base_ + PLSPR_OFF_ENERGY, (uint16_t)initial);
+    swosWriteWord(base_ + PLSPR_OFF_ENERGY_ACC, 0);
+    swosWriteByte(base_ + PLSPR_OFF_STAMINA, s);
+}
+
 // PlayerEnergy.cs:119-126.
 int swosPlayerEnergySpeedStep(int spriteAddr) {
     int energy = swosReadWord(spriteAddr + PLSPR_OFF_ENERGY);
@@ -51,9 +66,18 @@ int swosPlayerEnergyKeeperSkillPenalty(int spriteAddr) {
 #define PLAYER_ENERGY_STAMINA_FLOOR 8
 #define PLAYER_ENERGY_DIVISOR_SCALE 24
 
-// PlayerEnergy.cs:57 -- `_lenNum`/`_lenDen`. Nothing ported so far calls
-// SetMatchLength (PlayerEnergy.cs:58-63), so these stay at their C# default.
+// PlayerEnergy.cs:57 -- `_lenNum`/`_lenDen`. Default 1/1 (no-op) until
+// swosPlayerEnergySetMatchLength() below is called.
 static int s_lenNum = 1, s_lenDen = 1;
+
+#define PLAYER_ENERGY_REF_MATCH_SECONDS 360
+
+// PlayerEnergy.cs:58-63.
+void swosPlayerEnergySetMatchLength(int totalMatchSeconds) {
+    if (totalMatchSeconds <= 0) { s_lenNum = 1; s_lenDen = 1; return; }
+    s_lenNum = totalMatchSeconds;
+    s_lenDen = PLAYER_ENERGY_REF_MATCH_SECONDS;
+}
 
 // PlayerEnergy.cs:89-109.
 void swosPlayerEnergyDrainSlot(int spriteAddr) {

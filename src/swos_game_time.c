@@ -669,8 +669,14 @@ static void initTeamsDataForExtraTime(void)
     swosWriteWord(ADDR_inGameCounter, 0);
     swosWriteWord(ADDR_gameStatePl, 100);
     swosWriteWord(ADDR_gameState, 100);
-    // game.cpp:420 -- breakState global not yet declared in swos_addr.h;
-    // skipped until the break-state machine port lands (matches C#).
+    // game.cpp:420 -- breakState. PHASE 1 BOOTSTRAP FOLLOW-UP (2026-09-16):
+    // ADDR_breakState didn't exist yet when this function was first ported;
+    // it landed with the step-11B break-camera-mode ladder. Filling the gap
+    // now while porting Kickoff.cs's InitTeamsData (game.cpp:396-421, the
+    // exact same source block, ported there with this write present from
+    // the start -- see swos_kickoff.c) so the two duplicate copies stay
+    // consistent, matching the C# source's own duplication.
+    swosWriteWord(ADDR_breakState, 0);
     swosWriteWord(ADDR_breakCameraMode, (uint16_t)-1);
 }
 

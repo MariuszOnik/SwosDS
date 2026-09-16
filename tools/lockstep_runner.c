@@ -144,10 +144,12 @@ static void dumpAll22Players(void) {
     }
 }
 
-// Ball + all 22 players' whole positions -- same stall definition as
-// Step12IntegrationGolden.cs's SnapshotPositions()/kStallTicks and
-// sdl-debug's own "300 ticks without movement" rule.
-#define STALL_TICKS 300
+// Ball + all 22 players' whole positions. PHASE 1 BOOTSTRAP-COMPLETENESS
+// FOLLOW-UP (2026-09-16): was 300 (matching sdl-debug's own stall
+// convention and Step12IntegrationGolden.cs's old threshold), which proved
+// to be a FALSE POSITIVE -- see this file's Step12IntegrationGolden.cs
+// counterpart (kStallTicks) for the full trace of why 2000.
+#define STALL_TICKS 2000
 
 static bool positionsEqual(const int32_t *a, const int32_t *b, int n) {
     return memcmp(a, b, (size_t)n * sizeof(int32_t)) == 0;

@@ -66,7 +66,7 @@ if __name__ == '__main__':
     # C# element type -> emitted C type. Was hardcoded to int16_t (fine while
     # every caller passed "short"); TacticsLoader.cs's byte[] tables need
     # uint8_t, so this is now an explicit map instead of a silent guess.
-    c_emit_type = {'short': 'int16_t', 'byte': 'uint8_t', 'int': 'int32_t'}.get(c_type)
+    c_emit_type = {'short': 'int16_t', 'byte': 'uint8_t', 'int': 'int32_t', 'uint': 'uint32_t'}.get(c_type)
     if c_emit_type is None:
         print(f'error: no emitted-C-type mapping for C# type "{c_type}" -- add one to extract_all_arrays.py', file=sys.stderr)
         sys.exit(1)

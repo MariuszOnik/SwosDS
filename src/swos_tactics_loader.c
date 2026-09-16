@@ -20,6 +20,11 @@ static const uint8_t *const kBuiltinTactics[NUM_BUILTIN_TACTICS] = {
     Tact424, Tact343, TactSweep, Tact523, TactAttack, TactDefend,
 };
 
+const uint8_t *swosTacticsLoaderBuiltinTactics(int index) {
+    if (index < 0 || index >= NUM_BUILTIN_TACTICS) return 0;
+    return kBuiltinTactics[index];
+}
+
 void swosTacticsLoaderLoadAllTactics(void) {
     for (int slot = 0; slot < NUM_TACTICS; slot++) {
         int slotAddr = ADDR_teamTacticsPool + slot * TACTICS_STRUCT_SIZE;
