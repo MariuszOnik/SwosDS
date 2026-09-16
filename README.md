@@ -234,27 +234,61 @@ pulled forward verbatim into `swos_player_actions.{h,c}` — see that
 header's comment. When step 5 ports the rest of `PlayerActions.cs`, extend
 this file rather than re-porting the function into a second copy.
 
-**Differential test against real C#, per review request** (covering
-positive/negative deltas, stopping, and directions):
+**Differential test against real C#, covering every public function** (not
+just the three initially covered — see the follow-up review note below):
 `tools/csharp-golden-dump/SpriteUpdateGolden.cs` runs the actual
-`SpriteUpdate.CalculateDeltaXAndY`/`MoveSprite`/`UpdateSpriteAnimation`
-against 14 + 5 + 4 representative scenarios (all 8 movement octants, zero
-movement, zero speed, large/small deltas needing table-halving, overshoot
-vs. non-overshoot stops on both axes, a stationary no-op case, and 4
-animation-opcode fixtures covering plain loop / hold-last / variable-pause
-/ negative relative jump) and dumps inputs+outputs to
-`build/golden/sprite_update_golden.txt`. `tests/test_sprite_update_golden.c`
-parses that file and recomputes the same scenarios via the C port —
-**23/23 match byte-for-byte, first run.** (`CalculateDeltaXAndY` has no
+`CalculateDeltaXAndY` / `MoveSprite` / `UpdateSpriteAnimation` /
+`UpdateSpriteDirectionAndDeltas` / `SetPlayerAnimationTable` /
+`SetNextPlayerFrame` / `MoveAllPlayers` against representative scenarios and
+dumps inputs+outputs to `build/golden/sprite_update_golden.txt` (text) and
+`sprite_pool_after_moveall.bin` (binary). `tests/test_sprite_update_golden.c`
+replays every scenario through the C port and compares:
+
+| Function | Scenarios | Coverage |
+|---|---|---|
+| `CalculateDeltaXAndY` | 14 | all 8 movement octants, zero movement/speed, table-halving |
+| `MoveSprite` | 5 | +/- deltas, overshoot vs. not, stationary |
+| `UpdateSpriteAnimation` | 4 | opcode interpreter: loop / hold / variable-pause / negative jump |
+| `UpdateSpriteDirectionAndDeltas` | 5 | movement + no-movement, full 0..255 direction *and* the 0..7 quantised one |
+| `SetPlayerAnimationTable` | 4 | team1/team2 outfielder, goalkeeper, null-frame-pointer early-return path |
+| `SetNextPlayerFrame` | 7 | normal tick, direction-change rebind, rebind suppression (goalie dive / injured), both goal-cheer paths (scorer / teammate), keeper-excluded |
+| `MoveAllPlayers` | 1 (full region) | entire 22×128-byte sprite pool, byte-exact, after one tick — also exercises the two private helpers (`StopSpriteIfReachedDestination`, `UpdateAnimationTableAndDestinationReached`), which have no C# entry point of their own to call directly |
+
+**40/40 match byte-for-byte, first run** (`CalculateDeltaXAndY` has no
 PC/Amiga branch to test: OpenSWOS hard-locks it to PC mode unconditionally,
 per its own source comment — so unlike `Memory.Init()`, there's no second
-variant here.) Since `SpriteUpdate.cs` calls into `PlayerActions`, the C#
+variant here). Since `SpriteUpdate.cs` calls into `PlayerActions`, the C#
 harness needed a stand-in for compilation — `PlayerActionsStub.cs`, a
 **verbatim** copy of the real `SetPlayerAnimationTable` (diffed
 line-for-line against the source to confirm), not an approximation; delete
 it once step 5 adds the real file to the harness.
 
-`make test` (five suites): **95/95** pass (26 + 44 + 2 + 23).
+**Portability hardening (same review):** the sin/cos PC-damping shifts in
+`CalculateDeltaXAndY` operate on values that can be negative, and C11
+leaves `>>` on a negative signed operand implementation-defined (6.5.7p5) —
+GCC has always treated it as arithmetic in practice, but the port must
+match C#'s `int >> int`, which the language spec *guarantees* is
+arithmetic. Rather than rely on "probably fine on this GCC" (and this repo
+still has no ARM-toolchain test to spot-check it against), added
+`swosAsr32()` (`include/swos_util.h`) — a portable arithmetic-shift
+implementation using only well-defined unsigned operations — and switched
+all 6 shift sites in `swos_sprite_update.c` to it. (Audited every other `>>`
+site in `src/*.c`: `swos_memory.c`'s take unsigned operands, well-defined
+regardless; `swos_rng.c`'s extract exactly one byte at 8/16/24-bit
+boundaries, which is provably shift-mode-independent; `swos_sprite_update.c`'s
+`dir8` computation operates on an always-non-negative value after `& 0xff`.
+No other fixes needed.) Behavior unchanged — same 40/40 before and after.
+
+**Review-requested gap closed:** the initial step-3 differential test only
+covered 3 of `SpriteUpdate.cs`'s 5 public functions (leaving
+`UpdateSpriteDirectionAndDeltas`, `SetNextPlayerFrame` — arguably the
+riskiest function in the file, given its rebind/suppression/goal-cheer
+logic — and `MoveAllPlayers` unverified beyond round-trip tests).
+Follow-up review correctly called "pełne pokrycie różnicowe" premature;
+the table above is the completed coverage.
+
+`make test` (five suites): **112/112** pass (26 + 44 + 2 + 40, up from
+95/95 with 23 `SpriteUpdate` checks before the follow-up).
 
 ## Porting order (full plan)
 

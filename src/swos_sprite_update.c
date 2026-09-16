@@ -6,6 +6,7 @@
 #include "swos_player_actions.h"
 #include "swos_player_sprite.h"
 #include "swos_tables.h"
+#include "swos_util.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -64,14 +65,17 @@ SwosDeltasAndAngle swosCalculateDeltaXAndY(int speed, int x, int y, int destX, i
     int sin = swos_sineCosineTable[(angle + 64) & 0xff];
 
     // updateSprite.cpp:319-320 -- scale by speed, shift down to Q16.16.
-    sin = (sin * speed) >> 8;
-    cos = (cos * speed) >> 8;
+    // swosAsr32 (not plain >>): sin*speed / cos*speed can be negative, and
+    // C11 leaves >> on a negative signed operand implementation-defined --
+    // must match C#'s int>>int, which the C# spec guarantees is arithmetic.
+    sin = swosAsr32(sin * speed, 8);
+    cos = swosAsr32(cos * speed, 8);
 
     // updateSprite.cpp:323-329 -- PC mode damping (x 41/64 ~= 0.640625).
     // OpenSWOS is hard-locked to PC mode. Translates the 41/64 multiplier
     // into shifts: result = x - x/4 - x/16 - x/32 - x/64.
-    sin = sin - (sin >> 2) - (sin >> 4) - (sin >> 5) - (sin >> 6);
-    cos = cos - (cos >> 2) - (cos >> 4) - (cos >> 5) - (cos >> 6);
+    sin = sin - swosAsr32(sin, 2) - swosAsr32(sin, 4) - swosAsr32(sin, 5) - swosAsr32(sin, 6);
+    cos = cos - swosAsr32(cos, 2) - swosAsr32(cos, 4) - swosAsr32(cos, 5) - swosAsr32(cos, 6);
 
     result.deltaX = cos;
     result.deltaY = sin;

@@ -108,6 +108,152 @@ public static class SpriteUpdateGolden
                 + $"{BallSprite.CycleFramesTimer} {fsCounter}");
         }
 
-        Console.WriteLine($"wrote {calcCases.Length} CALC + {moveCases.Length} MOVE + {fixtures.Length} ANIM scenarios to {path}");
+        // ---- UpdateSpriteDirectionAndDeltas: movement + no-movement, full
+        // ---- 0..255 direction AND the 0..7 quantised direction together ----
+        (int x, int y, int destX, int destY, int speed)[] sprDirCases = {
+            (0, 0, 100, 0, 2048),      // movement, east
+            (0, 0, 0, 0, 2048),        // no movement -> fullDirection=-1, direction still 0 (unconditional formula)
+            (50, 50, -50, -50, 1500),  // NW-ish
+            (100, 100, 100, 200, 1024),// south
+            (0, 0, -30, 40, 3000),     // mixed signs, high speed
+        };
+        foreach (var (x, y, destX, destY, speed) in sprDirCases)
+        {
+            Memory.Init(pcMode: true);
+            BallSprite.XPixels = (short)x;
+            BallSprite.YPixels = (short)y;
+            BallSprite.DestX = (short)destX;
+            BallSprite.DestY = (short)destY;
+            BallSprite.Speed = (short)speed;
+
+            SpriteUpdate.UpdateSpriteDirectionAndDeltas(BallSprite.Base);
+
+            w.WriteLine($"SPRDIR {x} {y} {destX} {destY} {speed} => "
+                + $"{BallSprite.DeltaX} {BallSprite.DeltaY} {BallSprite.FullDirection} {BallSprite.Direction}");
+        }
+
+        // ---- PlayerActions.SetPlayerAnimationTable: team1/team2/goalkeeper/
+        // ---- null-frame-pointer (via the stub, a verbatim copy -- see
+        // ---- PlayerActionsStub.cs for why) ----
+        (int slot, int animTable, int direction)[] setAnimCases = {
+            (1, Memory.Addr.kPlayerRunningAnimTableAddr, 2),  // team1 outfielder, direction E
+            (12, Memory.Addr.kPlayerRunningAnimTableAddr, 6), // team2 outfielder, direction W
+            (0, Memory.Addr.kPlayerRunningAnimTableAddr, 0),  // team1 goalkeeper, direction N
+            (0, Memory.Addr.kPlTacklingAnimTableAddr, 0),     // goalkeeper + outfielder-only table -> null frame pointer
+        };
+        foreach (var (slot, animTable, direction) in setAnimCases)
+        {
+            Memory.Init(pcMode: true);
+            int b = PlayerSprite.Base(slot);
+            Memory.WriteWord(b + PlayerSprite.OffDirection, direction);
+            // Seed a known "before" state so the null-pointer early-return
+            // path's PRESERVED fields are verifiable, not coincidentally 0.
+            Memory.WriteWord(b + PlayerSprite.OffFrameIndex, 77);
+            Memory.WriteWord(b + PlayerSprite.OffCycleFramesTimer, 77);
+            Memory.WriteWord(b + PlayerSprite.OffFrameSwitchCounter, 77);
+            Memory.WriteWord(b + PlayerSprite.OffStartingDirection, 77);
+
+            PlayerActions.SetPlayerAnimationTable(b, animTable);
+
+            int animTablePtr = Memory.ReadSignedDword(b + PlayerSprite.OffAnimTablePtr);
+            short frameDelay = Memory.ReadSignedWord(b + PlayerSprite.OffFrameDelay);
+            int fitPtr = Memory.ReadSignedDword(b + PlayerSprite.OffFrameIndicesTable);
+            short fsCounter = Memory.ReadSignedWord(b + PlayerSprite.OffFrameSwitchCounter);
+            short frameIndex = Memory.ReadSignedWord(b + PlayerSprite.OffFrameIndex);
+            short cycleTimer = Memory.ReadSignedWord(b + PlayerSprite.OffCycleFramesTimer);
+            short startDir = Memory.ReadSignedWord(b + PlayerSprite.OffStartingDirection);
+
+            w.WriteLine($"SETANIM {slot} {animTable} {direction} => "
+                + $"{animTablePtr} {frameDelay} {fitPtr} {fsCounter} {frameIndex} {cycleTimer} {startDir}");
+        }
+
+        // ---- SetNextPlayerFrame: normal tick, direction-change rebind,
+        // ---- rebind suppression (goalie dive / injured), and the
+        // ---- goal-cheer overlay (scorer / teammate / keeper-excluded) ----
+        void RunNextFrameCase(string label, int slot, int installDir, int animTable,
+            int? afterDir, int playerState, bool goalScored, int lastTeamScored,
+            int lastPlayerScoredPtr, int tick)
+        {
+            Memory.Init(pcMode: true);
+            int b = PlayerSprite.Base(slot);
+            Memory.WriteWord(b + PlayerSprite.OffDirection, installDir);
+            PlayerActions.SetPlayerAnimationTable(b, animTable); // startingDirection = installDir
+
+            if (afterDir.HasValue)
+                Memory.WriteWord(b + PlayerSprite.OffDirection, afterDir.Value);
+            Memory.WriteByte(b + PlayerSprite.OffPlayerState, playerState);
+
+            Memory.WriteWord(Memory.Addr.goalScored, goalScored ? 1 : 0);
+            Memory.WriteWord(Memory.Addr.lastTeamScoredNumber, lastTeamScored);
+            Memory.WriteDword(Memory.Addr.lastPlayerScored, lastPlayerScoredPtr);
+            Memory.WriteWord(Memory.Addr.currentGameTick, tick);
+
+            SpriteUpdate.SetNextPlayerFrame(b);
+
+            short imageIndex = Memory.ReadSignedWord(b + PlayerSprite.OffImageIndex);
+            short frameIndex = Memory.ReadSignedWord(b + PlayerSprite.OffFrameIndex);
+            short cycleTimer = Memory.ReadSignedWord(b + PlayerSprite.OffCycleFramesTimer);
+            short frameDelay = Memory.ReadSignedWord(b + PlayerSprite.OffFrameDelay);
+            short fsCounter = Memory.ReadSignedWord(b + PlayerSprite.OffFrameSwitchCounter);
+            int animTablePtr = Memory.ReadSignedDword(b + PlayerSprite.OffAnimTablePtr);
+            int fitPtr = Memory.ReadSignedDword(b + PlayerSprite.OffFrameIndicesTable);
+            short startDir = Memory.ReadSignedWord(b + PlayerSprite.OffStartingDirection);
+
+            w.WriteLine($"NEXTFRAME {label} {slot} => "
+                + $"{imageIndex} {frameIndex} {cycleTimer} {frameDelay} {fsCounter} {animTablePtr} {fitPtr} {startDir}");
+        }
+
+        // slot 1 = team1 outfielder (ordinal 2, teamNumber 1); slot 0 = team1
+        // goalkeeper (ordinal 1, teamNumber 1) -- both from PlayerSprite.Init()'s
+        // defaults after a fresh Memory.Init(true).
+        RunNextFrameCase("normal_no_rebind", 1, 2, Memory.Addr.kPlayerRunningAnimTableAddr,
+            afterDir: null, playerState: 0, goalScored: false, lastTeamScored: 0, lastPlayerScoredPtr: 0, tick: 0);
+        RunNextFrameCase("direction_change_rebinds", 1, 2, Memory.Addr.kPlayerRunningAnimTableAddr,
+            afterDir: 6, playerState: 0, goalScored: false, lastTeamScored: 0, lastPlayerScoredPtr: 0, tick: 0);
+        RunNextFrameCase("goalie_diving_suppresses_rebind", 0, 0, Memory.Addr.kPlayerRunningAnimTableAddr,
+            afterDir: 2, playerState: 6, goalScored: false, lastTeamScored: 0, lastPlayerScoredPtr: 0, tick: 0);
+        RunNextFrameCase("injured_suppresses_rebind", 0, 0, Memory.Addr.kPlayerRunningAnimTableAddr,
+            afterDir: 2, playerState: 13, goalScored: false, lastTeamScored: 0, lastPlayerScoredPtr: 0, tick: 0);
+        RunNextFrameCase("scorer_cheers", 1, 0, Memory.Addr.kPlayerRunningAnimTableAddr,
+            afterDir: null, playerState: 0, goalScored: true, lastTeamScored: 1,
+            lastPlayerScoredPtr: PlayerSprite.Base(1), tick: 0); // tick&0x7F<=100 -> cheer
+        RunNextFrameCase("teammate_cheers", 1, 0, Memory.Addr.kPlayerRunningAnimTableAddr,
+            afterDir: null, playerState: 0, goalScored: true, lastTeamScored: 1,
+            lastPlayerScoredPtr: PlayerSprite.Base(2), tick: 0); // (ord<<2+tick)&0x3F<=31 -> cheer
+        RunNextFrameCase("keeper_never_cheers", 0, 0, Memory.Addr.kPlayerRunningAnimTableAddr,
+            afterDir: null, playerState: 0, goalScored: true, lastTeamScored: 1,
+            lastPlayerScoredPtr: PlayerSprite.Base(0), tick: 0);
+
+        // ---- MoveAllPlayers: full 22 x 128-byte sprite pool, one tick,
+        // ---- byte-exact (catches cross-slot interference, not just the
+        // ---- already-tested per-function math) ----
+        Memory.Init(pcMode: true);
+        // slot 0: positive delta on both axes, Y reaches/overshoots this tick, X does not.
+        PlayerSprite.SetX(0, 10 << 16);
+        PlayerSprite.SetY(0, 20 << 16);
+        PlayerSprite.SetDestX(0, 15);
+        PlayerSprite.SetDestY(0, 20);
+        PlayerSprite.SetDeltaX(0, 0x00010000);
+        PlayerSprite.SetDeltaY(0, 0x00010000);
+        // slot 1: X overshoots destination this tick.
+        PlayerSprite.SetX(1, 14 << 16);
+        PlayerSprite.SetDestX(1, 15);
+        PlayerSprite.SetDeltaX(1, 0x00020000);
+        // slot 11: negative delta, not reaching yet.
+        PlayerSprite.SetX(11, 100 << 16);
+        PlayerSprite.SetDestX(11, 90);
+        PlayerSprite.SetDeltaX(11, -0x00010000);
+        // slot 12: left stationary (delta 0, PlayerSprite.Init()'s default) --
+        // a same-tick baseline amid the other three moving slots.
+
+        SpriteUpdate.MoveAllPlayers();
+
+        byte[] pool = Memory.View(PlayerSprite.SpritePoolBase, PlayerSprite.TotalSlots * PlayerSprite.SlotStride).ToArray();
+        string poolPath = Path.Combine(outDir, "sprite_pool_after_moveall.bin");
+        File.WriteAllBytes(poolPath, pool);
+
+        Console.WriteLine($"wrote {calcCases.Length} CALC + {moveCases.Length} MOVE + {fixtures.Length} ANIM + "
+            + $"{sprDirCases.Length} SPRDIR + {setAnimCases.Length} SETANIM + 7 NEXTFRAME scenarios to {path}, "
+            + $"and {pool.Length} bytes to {poolPath}");
     }
 }
