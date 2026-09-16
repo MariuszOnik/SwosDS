@@ -96,3 +96,19 @@ bool swosPlayerEnergyInjuryRiskDoubled(int spriteAddr) {
     int energy = swosReadWord(spriteAddr + PLSPR_OFF_ENERGY);
     return energy < PLAYER_ENERGY_MAX * 20 / 100;
 }
+
+#define PLAYER_ENERGY_HALF_TIME_RECOVER_PCT 40
+
+// PlayerEnergy.cs:160-179.
+void swosPlayerEnergyRecoverAtHalfTime(void) {
+    for (int gslot = 0; gslot < PLSPR_TOTAL_SLOTS; gslot++) {
+        int b = swosPlayerSpriteBase(gslot);
+        int energy = swosReadWord(b + PLSPR_OFF_ENERGY);
+        if (energy <= 0 || energy >= PLAYER_ENERGY_MAX) continue;
+        int recovered = (PLAYER_ENERGY_MAX - energy) * PLAYER_ENERGY_HALF_TIME_RECOVER_PCT / 100;
+        energy = energy + recovered;
+        if (energy > PLAYER_ENERGY_MAX) energy = PLAYER_ENERGY_MAX;
+        swosWriteWord(b + PLSPR_OFF_ENERGY, (uint16_t)energy);
+        swosWriteWord(b + PLSPR_OFF_ENERGY_ACC, 0);
+    }
+}

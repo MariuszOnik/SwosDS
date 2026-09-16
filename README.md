@@ -1290,6 +1290,87 @@ built successfully (build-only check).
 
 Only `GameLoop.cs` itself (2045 lines, step 11B) remains before step 12.
 
+## Status: step 11B (2026-09-16) — `GameLoop.cs` itself, completing step 11
+
+The per-tick orchestrator itself is ported in full
+(`include/swos_game_loop.h`/`src/swos_game_loop.c`, extending the step-10
+`PlayersLeavingPitch` minimal slice into the whole file). Every real
+dependency this file reaches had already landed in steps 10, 11A, and the
+dedicated `Bench.cs` step, so this was a pure orchestration port with no
+new forward dependencies.
+
+**Ported in full:** `Tick`/`UpdateTimers`/`CoreGameUpdate` (the per-tick
+pipeline calling every subsystem in the original's exact order),
+`UpdateFireBlocked`/`SelectTeamForUpdate`, the ~1400-line
+`UpdateGameTimersAndCameraBreakMode` state machine (penalty-shootout
+inter-pen pause, the `ST_WAITING_ON_PLAYER` accumulator with its CPU
+825-tick safety net and the port-only last-resort force-kick fallback, the
+fire-press ceremony-skip paths for gameState 21/22/25/26, the
+`stoppageEventTimer` countdown), `DispatchStoppageEventTriggered` (the full
+gameState dispatch: 21/22/25/26/27/28/29/30/24 each to their named
+transition, plus the "plain stoppage" fallthrough that arms the
+break-camera ladder and the `ST_KEEPER_HOLDS_THE_BALL` clock-panel
+special-case), `DispatchBreakCameraMode` and all nine modes (0-8) of the
+break-camera ladder, `DoGoalkeeperSprites` (the keeper-dive ball-pinning
+Z-table lookup, including the task-#186 bug-fix note on selecting the
+keeper sprite by team*number*, not physical end), `MarkPlayer`,
+`SetCameraMovingToShowerState`/`FirstHalfJustEnded`/`GoToHalftime`/
+`GameOver`, `IsMatchRunning`/`SetMatchRunning`, and the four FSM-interval
+setters.
+
+**Where a "stub" function also had a real `Memory` side-effect, only the
+audio/render half was omitted, not the whole function** (same discipline
+as every prior step, worth restating here since this file has several):
+`StubLoadCrowdChantSampleIfNeeded`'s one-shot flag clear, `StubHandlePauseAndStats`'s
+`statsEnqueued` clear, and `PlayEnqueuedSamples`'s `goalCounter--`
+(read by `GameTime.cs`'s period-end gate) are all real writes, ported;
+only the paired `MatchAudio.*` calls are omitted. `StubHandleKeys` is the
+one function that really is a total no-op even in the C# (confirmed by
+reading it) — omitted entirely, not just its audio half.
+
+**One new real dependency, forward-pulled as a minimal extension:**
+`FirstHalfJustEnded` calls `PlayerEnergy.RecoverAtHalfTime()` — not
+previously pulled into the step 5/5.5/7A minimal `PlayerEnergy` slice
+(those needed `EffectEnabled`/`ShotPenalty`/`SpeedStep`/`DrainOnKeeperCatch`/
+`KeeperSkillPenalty`/`DrainSlot`/`DrainOnTackle`/`InjuryRiskDoubled` only).
+Added as `swosPlayerEnergyRecoverAtHalfTime()`, extending
+`swos_player_energy.h`/`.c` rather than creating a second file — recovers
+40% of each player's lost energy, unconditionally (not gated on
+`EffectEnabled`, same as `DrainSlot`).
+
+**Differential tests, full VM/Memory state:**
+`tools/csharp-golden-dump/Step11GameLoopGolden.cs`, 48 scenarios — the
+top-level entry points, every branch of
+`UpdateGameTimersAndCameraBreakMode` (interval-seed correction, in-progress
+fast path, the waiting-on-player accumulator's human/CPU-not-yet/CPU-kicks/
+safety-net-fires branches, all four fire-fast-forward ceremony states, the
+stoppage-timer countdown), every one of `DispatchStoppageEventTriggered`'s
+ten named `gameState` arms plus the plain-stoppage fallthrough (both with
+and without the keeper-holds clock-panel special case), the
+`DispatchBreakCameraMode` guard, and all nine break-camera-ladder modes
+(including mode 7's three branches: waiting for a controlled player,
+arming the result panel once one appears, and the timeout fallback to
+`CheckIfGoalkeeperClaimedTheBall`), the four half-end/game-over
+transitions (`FirstHalfJustEnded` verified against real energy recovery),
+`IsMatchRunning`/`SetMatchRunning`, and the interval setters.
+`tests/test_step11_gameloop_golden.c` replays each scenario through the C
+port and byte-compares the full `0x60000` buffer.
+
+**48/48 match byte-for-byte, first run.** `make test` (sixteen suites):
+**485/485** pass (26 + 44 + 2 + 40 + 25 + 31 + 45 + 12 + 24 + 11 + 23 + 27 +
+59 + 40 + 28 + 48). ARM9/BlocksDS cross-compile: clean, zero warnings,
+`.nds` built successfully (build-only check).
+
+**Step 11 is now fully complete** — `SetPieces`/`GameTime`/`Referee`/
+`Result` (step 10), the six smaller `GameLoop.cs` dependencies (11A),
+`Bench.cs`'s dedicated full port, and `GameLoop.cs` itself (11B) all land
+in this session. This is the first point where the complete per-tick
+match-simulation pipeline — clock, set pieces, referee, scorer list, camera,
+substitutions, and the full stoppage/restart orchestration — runs
+byte-exact against the real OpenSWOS C#. Only step 12 (VM-state → DS
+renderer adapter) remains before there is something to actually run on
+hardware.
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
@@ -1333,9 +1414,10 @@ Only `GameLoop.cs` itself (2045 lines, step 11B) remains before step 12.
     the real `Result.cs` port. Forward-pulled minimal slices:
     `GameLoop.PlayersLeavingPitch` (`swos_game_loop.h`/`.c`),
     `BallSim.CurrentPitchType` (a plain C global in `swos_game_time.c`).
-11. `GameLoop` orchestration -- `PlayersLeavingPitch` already forward-pulled
-    (step 10). Split (like steps 7A/7B) after its own dependency scan found
-    ~3900 more lines across 7 new files:
+11. ~~`GameLoop` orchestration~~ (2026-09-16, see "Status: step 11B" above)
+    -- `PlayersLeavingPitch` already forward-pulled (step 10). Split (like
+    steps 7A/7B) after its own dependency scan found ~3900 more lines
+    across 7 new files:
     - ~~11A: real local dependencies -- `Kickoff.cs` (minimal slice),
       `Camera.cs`, `GameSprites.cs`, `SpinningLogo.cs`,
       `PlayerNameDisplay.cs`, `Stats.cs` (all full ports), plus a minimal
@@ -1344,7 +1426,8 @@ Only `GameLoop.cs` itself (2045 lines, step 11B) remains before step 12.
     - ~~`Bench.cs` full port (1868 lines -- `UpdateBench`/
       `CheckIfGoalkeeperClaimedTheBall` reach almost the entire file, not a
       minimal-slice candidate)~~ (2026-09-16, see "Status: step 11" above)
-    - 11B: `GameLoop.cs` itself (2045 lines)
+    - ~~11B: `GameLoop.cs` itself (2045 lines)~~ (2026-09-16, see "Status:
+      step 11B" above)
 12. Adapter from VM state to the DS renderer (mirrors `swos-ds`'s
     `game_state.c` `swosTick()` boundary)
 

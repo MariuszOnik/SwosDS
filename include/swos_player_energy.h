@@ -14,13 +14,13 @@
 //
 // FORWARD-PULLED DEPENDENCY, MINIMAL SLICE: EffectEnabled/ShotPenalty/
 // SpeedStep (step 5, PlayerActions.cs), DrainOnKeeperCatch/KeeperSkillPenalty
-// (step 5.5, PlayerUpdate.cs), and DrainSlot/DrainOnTackle/InjuryRiskDoubled
-// (step 7A, UpdatePlayers.cs/PlayerTackle.cs) are the only members
-// referenced from any file ported so far (grep-verified). The rest of
-// PlayerEnergy.cs -- SeedSlot, RecoverAtHalfTime, SetMatchLength,
-// ResetForNewMatch -- is called from other files (TeamDataLoader.cs,
-// match-setup/half-time orchestration) not yet ported; port those calls
-// when their callers are ported.
+// (step 5.5, PlayerUpdate.cs), DrainSlot/DrainOnTackle/InjuryRiskDoubled
+// (step 7A, UpdatePlayers.cs/PlayerTackle.cs), and RecoverAtHalfTime
+// (step 11B, GameLoop.FirstHalfJustEnded) are the only members referenced
+// from any file ported so far (grep-verified). The rest of PlayerEnergy.cs
+// -- SeedSlot, SetMatchLength, ResetForNewMatch -- is called from other
+// files (TeamDataLoader.cs, match-setup orchestration) not yet ported;
+// port those calls when their callers are ported.
 #pragma once
 
 #include <stdbool.h>
@@ -56,3 +56,9 @@ void swosPlayerEnergyDrainOnTackle(int spriteAddr);
 // PlayerEnergy.cs:139-144. True when energy < 20% (doubles injury risk in
 // PlayerTackle.PlayerTackled). Gated on g_swosPlayerEnergyEffectEnabled.
 bool swosPlayerEnergyInjuryRiskDoubled(int spriteAddr);
+
+// PlayerEnergy.cs:160-179. Recovers 40% of each player's lost energy at
+// half-time. NOT gated on g_swosPlayerEnergyEffectEnabled (always runs,
+// same as DrainSlot) -- called once from GameLoop.FirstHalfJustEnded, the
+// first frame the clock crosses 45:00.
+void swosPlayerEnergyRecoverAtHalfTime(void);

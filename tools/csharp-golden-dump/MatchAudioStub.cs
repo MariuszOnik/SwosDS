@@ -57,4 +57,9 @@ public static class MatchAudio
     // Added for step 11 (Bench.cs) -- same rationale as above.
     public static void EnqueueSubstitute() { }
     public static void EnqueueTactics() { }
+
+    // Added for step 11B (GameLoop.cs) -- same rationale as above.
+    public static void LoadCrowdChant() { }
+    public static void Tick() { }
+    public static void PlayEndGameCrowd() { }
 }
