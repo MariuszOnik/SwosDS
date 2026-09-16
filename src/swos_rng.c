@@ -68,3 +68,14 @@ int swosRngNextRange2(int max) {
     if (max <= 1) return 0;
     return swosRngNextByte2() % max;
 }
+
+SwosRngState swosRngGetState(void) {
+    SwosRngState st;
+    st.seed = s_seed;
+    st.xorKey = s_xorKey;
+    st.xorIndex = s_xorIndex;
+    st.seed2 = s_seed2;
+    st.xorKey2 = s_xorKey2;
+    st.xorIndex2 = s_xorIndex2;
+    return st;
+}

@@ -3,9 +3,36 @@
 // See golden-dump.csproj for why this harness exists.
 using OpenSwos.SwosVm;
 
+// Phase 1 lockstep modes (see Step12IntegrationGolden.cs's RunLockstepLog/
+// DumpFullAtTick and ../../README.md "Status: Phase 1"). Kept as extra
+// dispatch branches in this same entry point rather than a second project
+// so both share the exact same OpenSwos source references.
+if (args.Length >= 1 && args[0] == "--lockstep-log")
+{
+    if (args.Length != 4)
+    {
+        Console.Error.WriteLine("usage: golden-dump --lockstep-log <seed> <maxTicks> <outPath>");
+        return 1;
+    }
+    Step12IntegrationGolden.RunLockstepLog(args[3], int.Parse(args[1]), int.Parse(args[2]));
+    return 0;
+}
+if (args.Length >= 1 && args[0] == "--lockstep-dump")
+{
+    if (args.Length != 4)
+    {
+        Console.Error.WriteLine("usage: golden-dump --lockstep-dump <seed> <tick> <outPath>");
+        return 1;
+    }
+    Step12IntegrationGolden.DumpFullAtTick(args[3], int.Parse(args[1]), int.Parse(args[2]));
+    return 0;
+}
+
 if (args.Length != 1)
 {
     Console.Error.WriteLine("usage: golden-dump <output-directory>");
+    Console.Error.WriteLine("       golden-dump --lockstep-log <seed> <maxTicks> <outPath>");
+    Console.Error.WriteLine("       golden-dump --lockstep-dump <seed> <tick> <outPath>");
     return 1;
 }
 

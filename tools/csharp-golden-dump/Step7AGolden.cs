@@ -141,6 +141,49 @@ public static class Step7AGolden
             PlayerEnergy.DrainSlot(out1_1);
         }, () => { });
 
+        // ---- PHASE 1 LOCKSTEP REGRESSION (2026-09-16) ----
+        // PlayerHeader.PlayerAttemptingJumpHeader/AttemptStaticHeader were
+        // pulled forward as real dependency slices in step 6A (real callers:
+        // PlayerControlled.RunControlledBranch's header-button branch), but
+        // no scenario anywhere in this repo's whole differential-test suite
+        // ever actually CALLED them directly or through that trigger path --
+        // step 6A's 12 PlayerControlled scenarios list confirms no
+        // jump/static-header case was covered. That gap let a transcription
+        // bug survive undetected in the C port: swos_player_header.c wrote
+        // the literal byte 2 for PlayerState instead of PL_JUMP_HEADING (9)
+        // -- byte value 2 is explicitly UNUSED in the real enum (see
+        // swos_player_state.h), so the C port could never legitimately
+        // produce it. Found by the Phase 1 synthetic-setup lockstep
+        // (tools/lockstep_runner.c): C and C# matched byte-for-byte for 4221
+        // ticks across three different seeds, each one diverging the instant
+        // a player entered a jump-header attempt, always at the exact same
+        // byte (PlayerSprite.OffPlayerState). These two scenarios call the
+        // real functions directly (their real, and only, caller --
+        // PlayerControlled.RunControlledBranch's header-button gate -- is
+        // deep inside a 1772-line mechanically-generated file, not worth
+        // reproducing the trigger conditions for when the bug is in the
+        // callee, not the caller).
+        Scenario("jump_header_attempt_direction3", () =>
+        {
+            PlayerSprite.SetPlayerOrdinal(1, 4); // outfielder
+            PlayerSprite.SetX(1, 300 << 16);
+            PlayerSprite.SetY(1, 400 << 16);
+        }, () => PlayerHeader.PlayerAttemptingJumpHeader(out1_1, 3));
+
+        Scenario("jump_header_attempt_direction7", () =>
+        {
+            PlayerSprite.SetPlayerOrdinal(12, 6);
+            PlayerSprite.SetX(12, 300 << 16);
+            PlayerSprite.SetY(12, 400 << 16);
+        }, () => PlayerHeader.PlayerAttemptingJumpHeader(out2_1, 7));
+
+        Scenario("static_header_attempt_direction2", () =>
+        {
+            PlayerSprite.SetPlayerOrdinal(1, 4);
+            PlayerSprite.SetX(1, 300 << 16);
+            PlayerSprite.SetY(1, 400 << 16);
+        }, () => PlayerHeader.AttemptStaticHeader(out1_1, 2));
+
         // ---- PlayerHeader.SetStaticHeaderDirection ----
         Scenario("static_header_direction_turn", () =>
         {

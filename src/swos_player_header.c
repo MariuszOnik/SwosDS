@@ -8,6 +8,7 @@
 #include "swos_memory.h"
 #include "swos_player_actions.h"
 #include "swos_player_sprite.h"
+#include "swos_player_state.h"
 #include "swos_team_data.h"
 #include "swos_util.h"
 
@@ -40,7 +41,16 @@ void swosPlayerAttemptingJumpHeader(int spriteAddr, int direction) {
     swosSetPlayerAnimationTable(spriteAddr, ADDR_kJumpHeaderAttemptAnimTableAddr);
     swosWriteByte(spriteAddr + PLSPR_OFF_PLAYER_DOWN_TIMER,
                   (uint8_t)swosReadSignedWord(ADDR_m_playerDownHeadingInterval));
-    swosWriteByte(spriteAddr + PLSPR_OFF_PLAYER_STATE, 2); // PL_JUMP_HEADING
+    // PHASE 1 LOCKSTEP FIX (2026-09-16): was hardcoded 2, a transcription
+    // bug -- PlayerHeader.cs:93 writes the real PL_JUMP_HEADING constant,
+    // which is 9 (PlayerHeader.cs:40), not 2. Byte value 2 is explicitly
+    // documented as unused in the source enum (see swos_player_state.h) --
+    // it should never have been reachable at all. Found by the Phase 1
+    // synthetic-setup lockstep (tools/lockstep_runner.c): C and C# matched
+    // byte-for-byte for 4221 ticks, then diverged at EXACTLY this one byte
+    // (Memory offset 0x5080C, PlayerSprite slot 16's OffPlayerState) the
+    // instant a player entered a jump-header attempt.
+    swosWriteByte(spriteAddr + PLSPR_OFF_PLAYER_STATE, PLSTATE_JUMP_HEADER);
 
     int dst = ADDR_kDefaultDestinations + (direction << 2);
     int slot = slotFromAddr(spriteAddr);
@@ -64,7 +74,7 @@ void swosAttemptStaticHeader(int spriteAddr, int direction) {
     swosWriteWord(spriteAddr + PLSPR_OFF_SPEED,
                   swosReadWord(ADDR_kStaticHeaderPlayerSpeed));
     swosSetPlayerAnimationTable(spriteAddr, ADDR_kStaticHeaderAttemptAnimTableAddr);
-    swosWriteByte(spriteAddr + PLSPR_OFF_PLAYER_STATE, 8); // PL_STATIC_HEADING
+    swosWriteByte(spriteAddr + PLSPR_OFF_PLAYER_STATE, PLSTATE_STATIC_HEADER); // was hardcoded 8 (same value, named now)
     swosWriteByte(spriteAddr + PLSPR_OFF_PLAYER_DOWN_TIMER, 20);
 }
 

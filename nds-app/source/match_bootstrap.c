@@ -9,6 +9,7 @@
 #include "swos_kickoff.h"
 #include "swos_memory.h"
 #include "swos_player_sprite.h"
+#include "swos_rng.h"
 #include "swos_team_data.h"
 #include "swos_team_data_loader.h"
 
@@ -80,10 +81,8 @@ static void seedTeamData(bool top, int playerInfoBase)
     swosWriteDword(top ? ADDR_topTeamInGame : ADDR_bottomTeamInGame, (uint32_t)playerInfoBase);
 }
 
-void dsBootstrapMatch(void)
+static void bootstrapCommon(void)
 {
-    swosMemoryInit(true);
-
     seedPlayerInfo(PLAYERINFO_TOP_BASE);
     seedPlayerInfo(PLAYERINFO_BOTTOM_BASE);
 
@@ -123,4 +122,23 @@ void dsBootstrapMatch(void)
     // net in swosGameLoopCoreGameUpdate) walk both AI teams into their real
     // kickoff formation and on into K_ST_GAME_IN_PROGRESS on its own, over
     // the following ticks -- exactly like a real match would.
+}
+
+void dsBootstrapMatch(void)
+{
+    swosMemoryInit(true);
+    bootstrapCommon();
+}
+
+void dsBootstrapMatchSeeded(int seed)
+{
+    swosMemoryInit(true);
+    // Before bootstrapCommon(): swosKickoffPrepareForInitialKick() (called
+    // inside bootstrapCommon) itself draws real Rng bytes (teamPlayingUp/
+    // teamStarting coin-flip, kickoff jitter), so the seed must be live
+    // before that call to genuinely govern the whole match -- see this
+    // function's header comment (match_bootstrap.h) for the full reasoning,
+    // mirrored exactly on the C# side by Step12IntegrationGolden.Bootstrap.
+    swosRngReseed(seed);
+    bootstrapCommon();
 }

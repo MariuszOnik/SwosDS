@@ -26,6 +26,8 @@
 // comments; not yet wired into any ported caller here).
 #pragma once
 
+#include <stdint.h>
+
 // Reset to a known seed. See the FIDELITY note above: verified to match the
 // original's natural start state for seed=0 only; the general splitting
 // policy for other seeds is an OpenSWOS extension, not confirmed original
@@ -40,3 +42,17 @@ int swosRngNextRange(int max);   // [0, max)
 int swosRngNextByte2(void);
 int swosRngNextWord2(void);
 int swosRngNextRange2(int max);  // [0, max)
+
+// PORT-ONLY diagnostic accessor (not part of any OpenSWOS surface -- Rng.cs's
+// m_seed/m_xorKey/m_xorIndex/m_seed2/m_xorKey2/m_xorIndex2 are private with
+// no public getter). Added for the Phase 1 lockstep harness
+// (tools/lockstep_runner.c), which needs to log/compare the FULL RNG state
+// every tick, not just its consumed byte stream. The C# side reads the same
+// six fields via reflection (see LockstepGolden.cs) since Rng.cs itself must
+// stay unmodified.
+typedef struct {
+    uint8_t seed, xorKey, xorIndex;
+    uint8_t seed2, xorKey2, xorIndex2;
+} SwosRngState;
+
+SwosRngState swosRngGetState(void);

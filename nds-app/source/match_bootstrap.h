@@ -42,3 +42,14 @@
 // TeamData wiring, ball position, camera, and game state so
 // swosGameLoopTick() can run immediately. Call once after swosMemoryInit().
 void dsBootstrapMatch(void);
+
+// Phase 1 lockstep (tools/lockstep_runner.c): identical to dsBootstrapMatch()
+// -- same formation, same PlayerInfo, same Kickoff/Camera calls -- except
+// Rng.Reseed(seed) (swosRngReseed) runs immediately after swosMemoryInit(),
+// BEFORE Kickoff.PrepareForInitialKick() (which itself draws real Rng
+// bytes). See Step12IntegrationGolden.cs's Bootstrap(int seed) header
+// comment (C# side) for why this ordering -- both sides must match exactly
+// for seed != 0 to mean the same thing on both engines. seed=0 reproduces
+// dsBootstrapMatch()'s existing behaviour byte-for-byte (swosMemoryInit's
+// own internal reseed already reseeds with 0 at a fresh init).
+void dsBootstrapMatchSeeded(int seed);

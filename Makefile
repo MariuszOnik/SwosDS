@@ -72,3 +72,45 @@ clean:
 	@echo "Note: this also removed build/golden/*.bin -- 'make test' will now"
 	@echo "FAIL test_golden_dump until you regenerate them:"
 	@echo "  cd tools/csharp-golden-dump && dotnet run -c Release -- ../../build/golden"
+
+# --- Phase 1 lockstep (tools/lockstep_runner.c) --------------------------
+#
+# Golden per-tick logs are generated the same way build/golden/*.bin is
+# (see the note above dotnet isn't wired into make on this machine) --
+# regenerate with:
+#   cd tools/csharp-golden-dump && dotnet run -c Release -- --lockstep-log <seed> <maxTicks> ../../build/golden/lockstep_seed<seed>.bin
+# for each seed in LOCKSTEP_SEEDS, with maxTicks=100000 (the long-tier cap;
+# a run that stalls sooner writes fewer records and its own .meta.txt notes
+# where -- see RunLockstepLog's header comment). lockstep-short/-long below
+# both read the SAME log file, just compare a different tick prefix of it.
+LOCKSTEP_SEEDS := 0 12345 987654321
+LOCKSTEP_GOLDEN := $(BUILD)/golden/lockstep_seed0.bin $(BUILD)/golden/lockstep_seed12345.bin $(BUILD)/golden/lockstep_seed987654321.bin
+
+$(BUILD)/lockstep_runner: tools/lockstep_runner.c $(OBJS) $(BUILD)/match_bootstrap.o
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -Inds-app/source $< $(OBJS) $(BUILD)/match_bootstrap.o -o $@
+
+.PHONY: lockstep-short lockstep-long
+
+# Fast tier: first 10, then first 1000 ticks of each seed's golden log.
+lockstep-short: $(BUILD)/lockstep_runner
+	@failed=0; \
+	for seed in $(LOCKSTEP_SEEDS); do \
+		for n in 10 1000; do \
+			echo "== lockstep-short seed=$$seed ticks=$$n =="; \
+			./$(BUILD)/lockstep_runner $$seed $$n $(BUILD)/golden/lockstep_seed$$seed.bin $(BUILD)/golden/lockstep_mismatch || failed=1; \
+		done; \
+	done; \
+	exit $$failed
+
+# Slow tier: first 10000, then all 100000 ticks (or until the golden log
+# ends -- stall or a shorter cap it was generated with) of each seed's log.
+lockstep-long: $(BUILD)/lockstep_runner
+	@failed=0; \
+	for seed in $(LOCKSTEP_SEEDS); do \
+		for n in 10000 100000; do \
+			echo "== lockstep-long seed=$$seed ticks=$$n =="; \
+			./$(BUILD)/lockstep_runner $$seed $$n $(BUILD)/golden/lockstep_seed$$seed.bin $(BUILD)/golden/lockstep_mismatch || failed=1; \
+		done; \
+	done; \
+	exit $$failed

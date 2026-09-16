@@ -1513,3 +1513,184 @@ after 300 ticks without movement of the ball or any player.
 Coordinate convention: VM positions use a 672x880 world with centre spot
 `(336,449)`. The 672x848 `PITCH*.DAT` bitmap represents world rows 16..863;
 bitmap row 0 must therefore be drawn at world `y=16`, not `y=0`.
+
+## Status: Phase 1 (2026-09-16) — deterministic CPU-vs-CPU lockstep, C vs C#
+
+Separate from the porting-order steps above (this is post-step-12 work, no
+new OpenSWOS file ported) -- the mandatory first phase of the plan to take
+`swos-vm-c` from "compiles and passes per-function differential tests" to
+"an actual match runs the same on both engines, byte for byte, tick for
+tick." Gameplay-fidelity and renderer work are explicitly out of scope for
+this phase; no renderer code changed in this commit.
+
+**What was built:**
+- `tools/csharp-golden-dump/Step12IntegrationGolden.cs` extended (not
+  replaced) with `RunLockstepLog(outPath, seed, maxTicks)` and
+  `DumpFullAtTick(outPath, seed, tick)`, invoked via two new CLI modes on
+  the same `golden-dump` entry point (`--lockstep-log`, `--lockstep-dump`
+  -- see `Program.cs`). `Bootstrap()` is now `Bootstrap(int seed)`:
+  `Rng.Reseed(seed)` runs immediately after `Memory.Init()`, before
+  `Kickoff.PrepareForInitialKick()` (which itself draws real Rng bytes), so
+  seed genuinely governs kickoff-side selection too, not just ticks from
+  `GameLoop.Tick()` onward. `seed=0` reproduces every dump this file
+  produced before Phase 1 byte-for-byte (verified: the existing
+  `test_step12_integration_golden` suite still passes unchanged).
+- `nds-app/source/match_bootstrap.c` gained `dsBootstrapMatchSeeded(int
+  seed)` alongside the existing `dsBootstrapMatch()` (unchanged, still what
+  `nds-app`'s `main.c` calls) -- same formation/PlayerInfo/TeamData setup,
+  factored into a shared `bootstrapCommon()`, with `swosRngReseed(seed)`
+  applied at the same point as the C# side.
+- `include/swos_rng.h`/`src/swos_rng.c` gained `swosRngGetState()` (a
+  `SwosRngState` struct: seed/xorKey/xorIndex for both streams) -- a
+  PORT-ONLY diagnostic accessor with no OpenSWOS equivalent (`Rng.cs`'s
+  state fields are private with no public getter; the C# side reads them
+  via reflection instead, since `Rng.cs` itself must stay an unmodified
+  copy of the real source).
+- `tools/lockstep_runner.c` (new, NOT part of `tests/` -- it takes CLI args
+  and prints heavy diagnostics, unlike the fast pass/fail unit-test suite):
+  replays the identical synthetic setup (via `dsBootstrapMatchSeeded`)
+  tick-by-tick, comparing a per-tick summary record against the C# golden
+  log field-by-field: FNV-1a 64-bit hash of the full `0x60000`-byte
+  `Memory` buffer, full RNG state (both streams), `gameState`/
+  `gameStatePl`/`breakCameraMode`, ball X/Y/Z, both teams' goal counts,
+  `currentGameTick`/`gt_gameTimeInMinutes`, and both teams' controlled-player
+  pointer. On the first mismatch: stops immediately, writes its own full
+  Memory buffer to disk, prints the RNG state and all 22 players' key
+  fields, and prints the exact `--lockstep-dump` command to get the
+  matching C# full buffer for a byte-level diff. Independently detects a
+  "stall" (ball + all 22 players' positions unchanged for 300 ticks --
+  same definition `sdl-debug` already uses) and stops there rather than
+  running to `maxTicks` uselessly.
+- `Makefile`: `make lockstep-short` (10 and 1000 ticks) and `make
+  lockstep-long` (10000 and 100000-or-stall ticks), each across all three
+  seeds below. Golden logs are regenerated the same way `build/golden/*.bin`
+  already is (`dotnet` isn't wired into `make` on this machine -- see the
+  existing note in the Makefile): `cd tools/csharp-golden-dump && dotnet
+  run -c Release -- --lockstep-log <seed> 100000 ../../build/golden/lockstep_seed<seed>.bin`.
+
+**Seeds tested:** 0 (first, per the plan), 12345, 987654321.
+
+**A real port bug was found and fixed, not just a test gap.** All three
+seeds matched byte-for-byte for the first several thousand ticks, then each
+diverged at the exact same single byte the instant any player entered a
+jump-header attempt: `PlayerSprite` slot N's `OffPlayerState` byte (e.g.
+seed 0, tick 4222, Memory offset `0x5080C`) -- C wrote `2`, C# wrote `9`.
+RNG state was byte-identical at the mismatch tick on both sides (ruling out
+an RNG-consumption-order bug immediately), and the two-step diagnose flow
+(`--lockstep-dump` + a byte-level diff of the two full buffers) found
+**exactly one differing byte** in the entire 393216-byte buffer. Root cause,
+found by grep once the exact field was known: `src/swos_player_header.c`'s
+`swosPlayerAttemptingJumpHeader` wrote the literal byte `2` with a comment
+claiming `// PL_JUMP_HEADING` -- a transcription slip from the original
+hand-port. The real C# (`PlayerHeader.cs:93`) writes `PL_JUMP_HEADING`,
+which is `9` (`PlayerHeader.cs:40`); byte value `2` is explicitly documented
+as **unused** in the real enum (see `swos_player_state.h`'s own comment) --
+the C port could never have legitimately produced it. Fixed to use the
+already-existing `PLSTATE_JUMP_HEADER` named constant (`swos_player_state.h`,
+also newly `#include`d); the neighbouring `AttemptStaticHeader`'s literal
+`8` was correct (matches `PLSTATE_STATIC_HEADER`) but renamed to the
+constant too, for consistency.
+
+**Why no earlier differential test caught this:** `PlayerAttemptingJumpHeader`/
+`AttemptStaticHeader` were pulled forward as real dependency slices in step
+6A, but their only real caller (`PlayerControlled.RunControlledBranch`'s
+header-button branch, deep inside the 1772-line mechanically-generated
+`swos_player_controlled.c`) was never exercised by a scenario that actually
+triggered a header attempt -- step 6A's 12 PlayerControlled scenarios list
+confirms no jump/static-header case was covered, and neither function had
+ever been called directly by any golden test either. **Regression added**
+(`tools/csharp-golden-dump/Step7AGolden.cs` + `tests/test_step7a_golden.c`,
++3 scenarios, Step7A now 27/27): both functions now called directly with
+representative directions, full-buffer byte comparison against real C#.
+
+**Result after the fix, `make lockstep-long` (all three seeds, up to
+100000 ticks or stall):**
+
+| seed | ticks matched | outcome |
+|---|---|---|
+| 0 | 13025 | stalled (both engines identically) at tick 12725 |
+| 12345 | 12440 | stalled (both engines identically) at tick 12140 |
+| 987654321 | 12127 | stalled (both engines identically) at tick 11827 |
+
+Every compared tick matches byte-for-byte up to each seed's stall point.
+Per the plan's own rule ("if both engines stall identically, don't change
+the C core -- find the missing external event or setup element"), the
+stall itself was NOT treated as a VM bug and the core was not touched
+further once this was confirmed.
+
+**Bootstrap-completeness audit (separate question, no C changes): the
+stall is very likely caused by the known-incomplete synthetic bootstrap,
+not the VM.** Per the correction to prefer capturing OpenSWOS's own real
+production result over hand-reconstructing it: `Main.cs`'s actual match-boot
+entry point, `InitSwosVmFromMatchSetup` (`Main.cs:5906-6112`), was read in
+full and found to call, in order: `Memory.Init` → `GameTime.SaveTeams` →
+`GameTime.InitPlayerCardChance` → `GameTime.DetermineStartingTeamAndTeam-
+PlayingUp` → `Pitch.SetPitchTypeAndNumber` → `GameTime.InitPitchBallFactors`
+→ `GameTime.InitGameVariables` → `TeamDataLoader.WritePlayerInfos`/
+`WireTeamFields` (the REAL team-file-driven loader, not synthetic
+poking) → `PlayerEnergy.SetMatchLength` → `Result.ResetResult` →
+`TacticsLoader.LoadAllTactics` → `Kickoff.StartingMatch` (→
+`InitPlayersBeforeEnteringPitch`, the real tunnel-walk-on) →
+`Bench.InitBenchBeforeMatch` → `Camera.SetCameraToInitialPosition`. Every
+one of these is plain, engine-agnostic C# operating only on
+`SwosVm.Memory`/`OpenSwos.Assets.TeamRecord` -- a whole-file grep of
+`GameTime.cs`/`TacticsLoader.cs`/`Pitch.cs`/`TeamDataLoader.cs`/
+`PlayerEnergy.cs`/`Kickoff.cs`/`Bench.cs` found exactly **one** Godot call
+in this entire chain (`TeamDataLoader.cs:261`, a `GD.Print` diagnostic,
+zero `Memory` effect) -- so this can be run and verified fully headlessly,
+the same way every other file in this project already is, with **no need
+to install or run the Godot engine**.
+
+`match_bootstrap.c`/`Step12IntegrationGolden.cs`'s synthetic bootstrap calls
+NONE of `SaveTeams`/`InitPlayerCardChance`/`DetermineStartingTeamAndTeam-
+PlayingUp`/`Pitch.SetPitchTypeAndNumber`/`InitGameVariables`/the real
+`TeamDataLoader.WritePlayerInfos`/`WireTeamFields`/`PlayerEnergy.SetMatch-
+Length`/`TacticsLoader.LoadAllTactics`/`Kickoff.StartingMatch`/
+`Bench.InitBenchBeforeMatch` -- this was already documented as a known,
+deliberate gap (`match_bootstrap.h`'s own header comment, written at step
+12). **Confirmed empirically, not just by code-reading:** `Memory.Addr.
+teamTacticsPool` (7030 bytes, `0x010800`) is **entirely zero** in
+`build/golden/s12_after_setup.bin` -- `TacticsLoader.LoadAllTactics()` is
+simply never called, so `TeamData.OffTactics=0` (set by `SeedTeamData`)
+indexes into an all-zero formation-position slot for every AI positioning
+lookup (`SetPlayerWithNoBallDestination` and friends dereference
+`g_tacticsTable[tactics]`). This is a fully plausible, concrete mechanism
+for both the "unrealistic-looking" AI-vs-AI play the DS adapter first
+motivated this whole lockstep effort to investigate, AND the ~12000-tick
+stall found above (degenerate all-zero relative destinations very plausibly
+make both AI teams converge on the same dead positions).
+
+**This is evidence, not proof** -- the hypothesis was not chased further to
+a confirmed root-cause line inside `swos_update_players.c`'s AI dispatch,
+and variant B (running the REAL `InitSwosVmFromMatchSetup` sequence
+headlessly against a synthetic-but-valid `TeamRecord` pair, then diffing
+its full buffer against variant A at matching checkpoints) was not
+implemented in this phase -- porting the ~7 missing files above
+(`GameTime`'s remaining helpers, `Pitch.cs`, the rest of `TeamDataLoader.cs`,
+`TacticsLoader.cs`, `PlayerEnergy.SetMatchLength`, `Kickoff.StartingMatch`/
+`InitPlayersBeforeEnteringPitch`, `Bench.InitBenchBeforeMatch`) to C is
+real, non-trivial new porting work -- comparable in size to another
+step of the porting order -- and is deliberately left as a scoped,
+separate follow-up rather than silently absorbed into Phase 1's closeout.
+
+**Report, kept separate per the plan's own instruction:**
+- **C port fidelity vs the real OpenSWOS C#:** proven, on this synthetic
+  setup, for all three seeds, to each seed's natural stall point -- one
+  real bug found and fixed (see above), zero remaining known
+  discrepancies.
+- **Bootstrap correctness:** NOT yet proven complete -- `match_bootstrap.c`
+  is a known-partial stand-in for the real `InitSwosVmFromMatchSetup`, and
+  the missing tactics/pitch/game-variables/team-loading initialization is
+  the leading hypothesis for both the stall and any "looks wrong"
+  AI-vs-AI behavior. Follow-up: port the real production chain (see list
+  above) into a shared bootstrap, add a golden test of the full real
+  startup sequence, and only then retire the hand-picked 1-4-4-2 placeholder
+  formation -- exactly the plan's own step 6 instruction for a confirmed
+  hypothesis.
+- **OpenSWOS vs the original SWOS:** out of scope this phase -- no
+  discrepancy of this kind was found or investigated.
+
+`make test`: **17/17 suites pass** (497 checks: the prior 494 plus 3 new
+Phase 1 regression scenarios). ARM9/BlocksDS (`nds-app/`): clean rebuild,
+zero warnings, `swos_vm_ds_app.nds` built successfully (build-only check --
+this phase is headless/desktop-only work, no renderer or on-device changes).

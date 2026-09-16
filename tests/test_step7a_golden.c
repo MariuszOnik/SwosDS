@@ -171,6 +171,33 @@ int main(void) {
     swosPlayerEnergyDrainSlot(out1_1);
     compareFullBuffer("energy_drain_slot_not_moving");
 
+    // ---- PHASE 1 LOCKSTEP REGRESSION (2026-09-16) ----
+    // See Step7AGolden.cs's matching comment: PlayerAttemptingJumpHeader/
+    // AttemptStaticHeader had no direct or indirect differential coverage
+    // anywhere in this repo, which let a transcription bug (PlayerState
+    // written as literal 2 instead of PL_JUMP_HEADING=9) survive undetected
+    // until the Phase 1 synthetic-setup lockstep found it at tick 4222.
+    swosMemoryInit(true);
+    swosPlayerSpriteSetPlayerOrdinal(1, 4);
+    swosPlayerSpriteSetX(1, 300 << 16);
+    swosPlayerSpriteSetY(1, 400 << 16);
+    swosPlayerAttemptingJumpHeader(out1_1, 3);
+    compareFullBuffer("jump_header_attempt_direction3");
+
+    swosMemoryInit(true);
+    swosPlayerSpriteSetPlayerOrdinal(12, 6);
+    swosPlayerSpriteSetX(12, 300 << 16);
+    swosPlayerSpriteSetY(12, 400 << 16);
+    swosPlayerAttemptingJumpHeader(out2_1, 7);
+    compareFullBuffer("jump_header_attempt_direction7");
+
+    swosMemoryInit(true);
+    swosPlayerSpriteSetPlayerOrdinal(1, 4);
+    swosPlayerSpriteSetX(1, 300 << 16);
+    swosPlayerSpriteSetY(1, 400 << 16);
+    swosAttemptStaticHeader(out1_1, 2);
+    compareFullBuffer("static_header_attempt_direction2");
+
     // ---- PlayerHeader.SetStaticHeaderDirection ----
     swosMemoryInit(true);
     swosTeamDataSetCurrentAllowedDirection(true, 3);
