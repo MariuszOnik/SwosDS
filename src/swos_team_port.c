@@ -1,10 +1,14 @@
-// SOURCE: openswos game/scripts/Sim/Port/TeamPort.cs:54-107 (StopAllPlayers
-// + StopPlayers ONLY -- see swos_team_port.h).
+// SOURCE: openswos game/scripts/Sim/Port/TeamPort.cs (see swos_team_port.h
+// for the exact slice ported).
 // FIDELITY: VERIFIED_PC -- direct mechanical port, no logic changes.
 #include "swos_team_port.h"
+#include "generated/swos_team_port_tables.h"
 #include "swos_memory.h"
 #include "swos_player_sprite.h"
 #include "swos_team_data.h"
+#include "swos_team_data_loader.h"
+
+#define TEAMPORT_POSITION_GOALKEEPER 0
 
 // team.cpp:46-55 -- stopPlayers(team).
 static void stopPlayers(bool top) {
@@ -42,4 +46,39 @@ void swosTeamPortStopAllPlayers(void) {
         // team.cpp:38-43 -- SWOS_TEST guard not wired in OpenSWOS; always resets.
         swosWriteWord(teamBase + TEAMDATA_OFF_GOALKEEPER_PLAYING, 0);
     }
+}
+
+// team.cpp:66-75 -- updatePlayerShotChanceTable.
+void swosTeamPortUpdatePlayerShotChanceTable(bool top, int playerInfoAddr) {
+    int position    = playerInfoAddr == 0 ? -1 : swosReadByte(playerInfoAddr + TDL_OFF_POSITION);
+    int goalieSkill = playerInfoAddr == 0 ? 0  : swosReadByte(playerInfoAddr + TDL_OFF_GOALIE_SKILL);
+
+    int teamBase  = swosTeamDataBase(top);
+    int32_t tableAddr = swosReadSignedDword(teamBase + TEAMDATA_OFF_SHOT_CHANCE_TABLE);
+    if (tableAddr == 0) {
+        // Buffer never allocated -- fall back to legacy index encoding so
+        // we don't crash. (Should not happen post-SeedTeamData.)
+        if (position == TEAMPORT_POSITION_GOALKEEPER) {
+            if (goalieSkill < 0) goalieSkill = 0;
+            if (goalieSkill > 7) goalieSkill = 7;
+            swosWriteDword(teamBase + TEAMDATA_OFF_SHOT_CHANCE_TABLE, (uint32_t)goalieSkill);
+        } else {
+            swosWriteDword(teamBase + TEAMDATA_OFF_SHOT_CHANCE_TABLE, (uint32_t)-1);
+        }
+        return;
+    }
+
+    const int16_t *row;
+    int rowLen;
+    if (position == TEAMPORT_POSITION_GOALKEEPER) {
+        if (goalieSkill < 0) goalieSkill = 0;
+        if (goalieSkill > 7) goalieSkill = 7;
+        row = swos_kGoalieSkillTables[goalieSkill];
+        rowLen = 30;
+    } else {
+        row = swos_kPlayerShotChanceTable;
+        rowLen = 30;
+    }
+    for (int i = 0; i < rowLen; i++)
+        swosWriteWord(tableAddr + i * 2, (uint16_t)row[i]);
 }

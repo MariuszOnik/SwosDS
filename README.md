@@ -632,6 +632,81 @@ byte-for-byte; the full desktop suite is 225/225.** The full source set also
 cross-compiles cleanly for ARM9 at `-O2` with zero warnings (build check; the
 21-check runtime checkpoint from step 5.5 remains the latest target run).
 
+## Status: step 7A (2026-09-16) — real local dependencies of `UpdatePlayers.cs`
+
+Before porting `UpdatePlayers.cs` itself (4349 lines, step 7B), this step
+ports everything it genuinely pulls in that isn't a distant future
+porting-order step: `BallVariables.cs` (full file, 535 lines --
+`UpdateBallVariables`/`CalculateBallNextGroundXYPositions`, the goto-heavy
+ball-landing-position predictor `UpdatePlayers.cs` calls once per tick),
+`TeamPort.UpdatePlayerShotChanceTable` (+ its two literal skill tables,
+mechanically extracted -- see `tools/extract_team_port_tables.py`,
+`kGoalieSkillTables`/`kPlayerShotChanceTable`, deferred in step 5.5),
+`PlayerEnergy.DrainSlot`/`DrainOnTackle`/`InjuryRiskDoubled` (extending the
+step-5/5.5 minimal slice), and the **entire remainder** of both
+`PlayerHeader.cs` and `PlayerTackle.cs` -- `SetStaticHeaderDirection`/
+`SetPlayerWithNoBallDestination` complete `PlayerHeader.cs`;
+`PlayerTacklingTestFoul`/`TestFoulForPenaltyAndFreeKick`/
+`TryBookingThePlayer`/`TrySendingOffThePlayer`/`PlayerTackled`/
+`PlayersTackledTheBallStrong` complete `PlayerTackle.cs` (only its audio-stub
+wrappers and `SwosRand` remain unported -- both already covered by the
+established omission pattern and `swosRngNextByte()`).
+
+**Corrected scope before porting anything:** an initial dependency scan
+(comment-inclusive grep) suggested `UpdatePlayers.cs` also needed
+`SetPieces.TickThrowIn` (~467 lines), `Referee.UpdateReferee`, and
+`InputControls.UpdateControlledPlayer` -- re-checking with a comment-
+filtered grep showed `InputControls`/`UpdateReferee`/`Kickoff.
+PrepareForInitialKick`/`UpdateGoals.UpdatePostGoalRestart` appear **only in
+comments**, never as real calls. The real, previously-missed set was
+narrower: `BallVariables` (2 calls), the `TeamPort`/`PlayerEnergy`
+extensions above, `PlayerHeader`'s remaining two functions, `PlayerTackle`'s
+whole foul/booking/injury chain, and `Referee.ActivateReferee` (one real
+call, from `PlayerTacklingTestFoul` when a foul draws a card).
+
+**`Referee.ActivateReferee` -- minimal slice, not the whole 728-line
+`Referee.cs`:** pulled forward with its private helpers
+(`InitRefereeAnimationTable`, `MarkDisplaySpritesDirty`) and the
+`RefereeSprite` Memory-view (a new Sprite outside the 22-player pool, at
+`0x4FD00` -- clear of both TeamData-bottom, which ends `0x4FCFF`, and the
+`0x4FE60+` scratch PlayerInfo region steps 5/5.5's tests already use). The
+rest of `Referee.cs` -- the full per-tick referee-movement/card-animation
+state machine (`UpdateReferee` and friends) -- is a different layer (per-
+tick rendering/movement, not "a foul just happened, register it"), not
+called from anything ported so far; it lands with its own future step.
+`Referee.NotifyEnteredAboutToGiveCard` (called from `UpdatePlayers.cs`
+directly) and `ActivateReferee`'s own `Dbg*` counters are pure telemetry
+(zero `Memory` effect, confirmed by reading each one) -- omitted and
+documented, not stubbed, same pattern as every other `*Golden` telemetry
+omission in this port.
+
+**Differential tests, full VM/Memory state:**
+`tools/csharp-golden-dump/Step7AGolden.cs` runs the real dependency chain
+through 24 scenarios (all four `UpdateBallVariables` direction branches
+plus the not-moving case, both `CalculateBallNextGroundXYPositions` paths,
+all three `UpdatePlayerShotChanceTable` paths, both `DrainSlot` states,
+`SetStaticHeaderDirection`'s turn case, `SetPlayerWithNoBallDestination`
+for outfielders on both teams and a goalkeeper, `ActivateReferee` directly,
+`PlayerTacklingTestFoul`'s too-far/close-goalkeeper/yellow-card/no-cards/
+injury-triggering paths, and both `PlayersTackledTheBallStrong` CPU/human
+branches) and dumps the entire `0x60000`-byte buffer per scenario.
+`tests/test_step7a_golden.c` replays each setup through the C port and
+byte-compares the full buffer.
+
+Getting the real `PlayerHeader.cs`/`PlayerTackle.cs` into the headless
+harness (replacing the `PlayerHeader`/`PlayerTackle` stand-ins inside step
+6A's `PlayerControlledDepsStub.cs`, now split and slimmed to
+`AiStub.cs`) needed two new stand-ins of its own: `CameraStub.cs` (just
+`GetCameraYWhole`, the one `Camera.cs` member `Referee.ActivateReferee`
+uses -- not the rest of `Camera.cs`'s 573-line movement code) and
+`RefereeStub.cs` (`ActivateReferee` + its private helpers + `RefereeSprite`,
+verbatim, mirroring exactly what `swos_referee.c` ports). Five more
+`MatchAudioStub.cs` no-op methods cover `PlayerTackle.cs`'s audio call
+sites.
+
+**24/24 match byte-for-byte, first run.** `make test` (nine suites):
+**249/249** pass (26 + 44 + 2 + 40 + 25 + 31 + 45 + 12 + 24).
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
@@ -658,6 +733,14 @@ cross-compiles cleanly for ARM9 at `-O2` with zero warnings (build check; the
      (2026-09-16, see Status above)
    - 6B: CPU-only AI hooks — completed with step 9, without a temporary no-op
 7. `UpdatePlayers`
+   - ~~7A: real local dependencies -- `BallVariables.cs` (full), `TeamPort`/
+     `PlayerEnergy` extensions, and the rest of `PlayerHeader.cs`/
+     `PlayerTackle.cs` (both now fully ported)~~ (2026-09-16, see Status
+     above)
+   - 7B: `UpdatePlayers.cs` itself (4349 lines) — AI branches keep asserting
+     to step 9 (same hook pattern as 6A/6B); `SetPieces`/`Referee`'s
+     per-tick pieces this file also touches get the same assert-backed
+     `PORT_PENDING` treatment, replaced in step 10 — never a silent no-op.
 8. `InputControls`
 9. `AiHelpers`, `AiBrain`
 10. `SetPieces`, `GameTime`, `Referee` — `GameTime.cs` also unblocks

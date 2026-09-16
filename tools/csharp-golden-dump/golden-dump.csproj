@@ -41,13 +41,16 @@
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerUpdate.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerControlled.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/TeamPort.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/BallVariables.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerHeader.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerTackle.cs" />
     <!-- MatchAudioStub.cs, UpdateGoalsStub.cs, TeamDataLoaderStub.cs,
-         PlayerControlledStub.cs, GodotStub.cs (this directory) are
-         auto-included by the SDK; see each one's header comment for why
-         BallUpdate.cs/BallOutOfPlay.cs/SpriteUpdate.cs/PlayerActions.cs/
-         PlayerUpdate.cs need a stand-in for those specific types rather
-         than their real (larger, Godot-dependent, or deliberately-deferred)
-         source files. -->
+         PlayerControlledStub.cs, GodotStub.cs, AiStub.cs, CameraStub.cs,
+         RefereeStub.cs (this directory) are auto-included by the SDK; see
+         each one's header comment for why BallUpdate.cs/BallOutOfPlay.cs/
+         SpriteUpdate.cs/PlayerActions.cs/PlayerUpdate.cs/PlayerTackle.cs
+         need a stand-in for those specific types rather than their real
+         (larger, Godot-dependent, or deliberately-deferred) source files. -->
   </ItemGroup>
 
   <ItemGroup>

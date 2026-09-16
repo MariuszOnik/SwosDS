@@ -29,6 +29,7 @@
 
 #define TDL_PLAYER_INFO_SIZE 61
 
+#define TDL_OFF_POSITION     4   // byte -- PlayerInfo.position (PlayerPosition enum, 0=goalkeeper)
 #define TDL_OFF_PASSING      27  // byte -- PlayerInfo.passing skill (0..7)
 #define TDL_OFF_SHOOTING     28  // byte -- PlayerInfo.shooting skill (0..7)
 #define TDL_OFF_HEADING      29  // byte -- PlayerInfo.heading skill (0..7)

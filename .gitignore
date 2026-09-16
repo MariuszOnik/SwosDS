@@ -6,3 +6,6 @@ build/
 # dotnet build artifacts for tools/csharp-golden-dump
 tools/csharp-golden-dump/bin/
 tools/csharp-golden-dump/obj/
+
+# Python bytecode cache from running tools/*.py generators
+tools/__pycache__/

@@ -38,4 +38,11 @@ public static class MatchAudio
 
     // Added for step 5.5 (PlayerUpdate.cs) -- same rationale as above.
     public static void KeeperClaimedComment() { }
+
+    // Added for step 7A (PlayerTackle.cs) -- same rationale as above.
+    public static void InjuryComment() { }
+    public static void DangerousPlayComment() { }
+    public static void PlayFoulWhistle() { }
+    public static void PenaltyComment() { }
+    public static void FoulComment() { }
 }
