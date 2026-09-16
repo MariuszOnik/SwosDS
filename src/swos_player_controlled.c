@@ -6,6 +6,8 @@
 #include <stdint.h>
 
 #include "swos_addr.h"
+#include "swos_ai_brain.h"
+#include "swos_ai_helpers.h"
 #include "swos_ball_sprite.h"
 #include "swos_memory.h"
 #include "swos_player_actions.h"
@@ -34,8 +36,14 @@ enum {
 };
 
 SwosPlayerControlledTelemetry g_swosPcTelemetry;
-SwosAiSetControlsDirectionHook g_swosAiSetControlsDirectionHook;
-SwosAiKickHook g_swosAiKickHook;
+// Step 9 closes the 6A/6B boundary: these hooks are now statically wired to
+// the real AiBrain.SetControlsDirection / AiHelpers.AI_Kick implementations
+// (not left NULL for an assert to catch) -- kept as function pointers,
+// rather than direct calls, because that's the stable call point 6A/7B
+// already established and other code (tests, future overrides) may still
+// want to substitute a different AI at this seam.
+SwosAiSetControlsDirectionHook g_swosAiSetControlsDirectionHook = swosAiBrainSetControlsDirection;
+SwosAiKickHook g_swosAiKickHook = swosAiHelpersAiKick;
 bool g_swosFaithfulBallControl = true;
 
 static void runPassChaseTail(int spriteAddr, int teamBase);
@@ -55,16 +63,16 @@ void swosPlayerControlledIncSkillDuelOppWin(void) {
 }
 
 static void requireAiSetControlsDirection(int teamBase) {
-    // Step 6A boundary: this is a hard failure, not a gameplay no-op. Step 9
-    // installs the real AiBrain.SetControlsDirection implementation here.
-    assert(g_swosAiSetControlsDirectionHook != 0 &&
-           "AiBrain.SetControlsDirection requires step 9");
+    // Defensive only, post-step-9: the hook is always wired (see the
+    // static initializer above). Kept as a named call site for readability
+    // and so a test can still null the hook out deliberately.
+    assert(g_swosAiSetControlsDirectionHook != 0);
     if (g_swosAiSetControlsDirectionHook)
         g_swosAiSetControlsDirectionHook(teamBase);
 }
 
 static void requireAiKick(int spriteAddr, int teamBase) {
-    assert(g_swosAiKickHook != 0 && "AiHelpers.AI_Kick requires step 9");
+    assert(g_swosAiKickHook != 0);
     if (g_swosAiKickHook)
         g_swosAiKickHook(spriteAddr, teamBase);
 }

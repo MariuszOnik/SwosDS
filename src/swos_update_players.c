@@ -20,12 +20,14 @@
 //   s_kickFallbackTop/BotDef/Mid/Att/Box, and UpdatePlayers.FallbackChasesTop
 //   etc.'s public getters (Main.cs smoke-test reporting only).
 //
-// Deferred, assert-backed hooks (NOT silent no-ops):
-//   - AiBrain.SetControlsDirection / AiHelpers.AI_Kick -- step 9, via the
-//     EXISTING g_swosAiSetControlsDirectionHook / g_swosAiKickHook globals
-//     (swos_player_controlled.h, established step 6A).
+// Hook boundaries (reuse the g_swosAiSetControlsDirectionHook /
+// g_swosAiKickHook globals from swos_player_controlled.h, established step
+// 6A):
+//   - AiBrain.SetControlsDirection / AiHelpers.AI_Kick -- wired to the real
+//     implementations as of step 9 (swos_ai_brain.h/swos_ai_helpers.h).
 //   - SetPieces.SetThrowInPlayerDestinationCoordinates / SetPieces.TickThrowIn
-//     -- step 10, via the NEW swos_set_pieces.h hooks (this step).
+//     -- still step 10, via the NEW swos_set_pieces.h hooks (7B), still
+//     assert-backed.
 //
 // Audio omitted (pure playback, zero Memory effect, verified by reading
 // MatchAudio.KeeperSavedComment/PlayMissGoal's bodies -- Audio/MatchAudio.cs):
@@ -107,18 +109,23 @@ void swosUpdatePlayersResetState(void)
     s_carrierStallTicksBot = 0;
 }
 
-// ---- step-9 hook wrappers (reuse the EXISTING globals from step 6A) -------
+// ---- AI hook wrappers (reuse the EXISTING globals from step 6A) -----------
+// Step 9 wired g_swosAiSetControlsDirectionHook/g_swosAiKickHook to the real
+// AiBrain.SetControlsDirection/AiHelpers.AI_Kick (see
+// swos_player_controlled.c's static initializer, the one definition site
+// for both globals) -- the hook is always non-NULL now. Kept as named
+// wrapper functions (stable call points), assert relaxed to a plain
+// defensive null-check rather than an "unimplemented" failure.
 static void requireAiSetControlsDirection(int teamBase)
 {
-    assert(g_swosAiSetControlsDirectionHook != NULL &&
-           "AiBrain.SetControlsDirection requires step 9");
+    assert(g_swosAiSetControlsDirectionHook != NULL);
     if (g_swosAiSetControlsDirectionHook)
         g_swosAiSetControlsDirectionHook(teamBase);
 }
 
 static void requireAiKick(int spriteAddr, int teamBase)
 {
-    assert(g_swosAiKickHook != NULL && "AiHelpers.AI_Kick requires step 9");
+    assert(g_swosAiKickHook != NULL);
     if (g_swosAiKickHook)
         g_swosAiKickHook(spriteAddr, teamBase);
 }

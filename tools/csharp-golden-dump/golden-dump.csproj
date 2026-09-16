@@ -46,6 +46,8 @@
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerTackle.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/UpdatePlayers.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/InputControls.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/AiHelpers.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/AiBrain.cs" />
     <!-- MatchAudioStub.cs, UpdateGoalsStub.cs, TeamDataLoaderStub.cs,
          PlayerControlledStub.cs, GodotStub.cs, AiStub.cs, CameraStub.cs,
          RefereeStub.cs, SetPiecesStub.cs (this directory) are auto-included
@@ -61,6 +63,9 @@
     <!-- UpdatePlayers.cs (added above, step 7B) now provides the real
          PortPlayerState enum, so the step-5.5 stand-in would collide. -->
     <Compile Remove="PortPlayerStateStub.cs" />
+    <!-- AiHelpers.cs/AiBrain.cs (added above, step 9) now provide the real
+         AiBrain/AiHelpers classes, so the step-6A throw-stub would collide. -->
+    <Compile Remove="AiStub.cs" />
   </ItemGroup>
 
 </Project>

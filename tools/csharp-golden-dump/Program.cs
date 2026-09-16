@@ -34,5 +34,6 @@ PlayerControlledGolden.Run(outDir);
 Step7AGolden.Run(outDir);
 Step7BGolden.Run(outDir);
 Step8Golden.Run(outDir);
+Step9Golden.Run(outDir);
 
 return 0;

@@ -7,13 +7,15 @@
 // Everything else in this file is file-local (static) -- the C# class's
 // other members are all `private static`.
 //
-// Two deferred, assert-backed hook boundaries (NOT silent no-ops):
-//   - AiBrain.SetControlsDirection / AiHelpers.AI_Kick -- step 9. Reuses the
-//     EXISTING g_swosAiSetControlsDirectionHook / g_swosAiKickHook globals
-//     from swos_player_controlled.h (established in step 6A), not new ones.
+// Two hook boundaries, reusing the g_swosAiSetControlsDirectionHook /
+// g_swosAiKickHook globals from swos_player_controlled.h (established step
+// 6A) rather than new ones:
+//   - AiBrain.SetControlsDirection / AiHelpers.AI_Kick -- wired to the real
+//     implementations as of step 9 (see swos_ai_brain.h/swos_ai_helpers.h);
+//     no longer an assert-backed stub.
 //   - SetPieces.SetThrowInPlayerDestinationCoordinates / SetPieces.TickThrowIn
-//     -- step 10. New hooks, declared in swos_set_pieces.h, mirroring the
-//     same assert-then-call convention.
+//     -- still step 10. New hooks, declared in swos_set_pieces.h, mirroring
+//     the same assert-then-call convention (this one still assert-backed).
 //
 // Design decision (documented, not silently dropped): the C# source wraps
 // three calls to PlayerHeader.SetPlayerWithNoBallDestination in
