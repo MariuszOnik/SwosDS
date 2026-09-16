@@ -389,6 +389,100 @@ landing in `.bss` since it's zero-initialized) — `.nds` is 125 KB, total
 RAM footprint ~445 KB against the DS's 4 MB, no size/alignment/stack
 surprises found.
 
+## Status: step 5 (2026-09-16) — `PlayerActions.cs`, the rest of it
+
+The remaining ~2050 lines of `PlayerActions.cs` (`SetPlayerAnimationTable`
+was already done in step 3) are fully ported into `swos_player_actions.{h,c}`
+alongside it — 20 more functions, all `goto`/labels preserved verbatim:
+`GetPlayerInfoForSprite`, `UpdatePlayerWithBall`, `UpdateControllingPlayer`,
+`CalculateIfPlayerWinsBall` (the 50/50 ball-duel resolution), `PlayerKickingBall`,
+`PlayerHittingStaticHeader`, `PlayerHittingJumpHeader`,
+`PlayerTackledTheBallStrong`/`Weak`, `DoFlyingHeader`/`DoLobHeader`, `DoPass`,
+`SetPlayerDowntimeAfterTackle`, `SetJumpHeaderHitAnimTable` (distinct from
+`SetPlayerJumpHeaderHitAnimationTable`, both ported), `GetClosestNonControlledPlayerInDirection`,
+`SetPlayerAnimationTableAndPictureIndex`, `GetBallDestCoordinatesTable`,
+`PlayStopGoodPassSampleIfNeeded`/`StopGoodPassSample`/`EnqueuePlayingGoodPassSample`,
+`UpdatePlayerSpeedAndFrameDelay`/`RecomputeSpriteDeltas`.
+
+**Scoping decisions, each grep-verified against the whole file before being
+made — new dependencies pulled in only where the executing logic actually
+needs them, nothing pulled in "just in case":**
+
+- **Telemetry (~180 lines: shot counters, curve tracker, on-target
+  tracker, `ResetShotCounters`/`TickShotCurveTracker`/`TickOnTargetTracker`/
+  `RecordShot`/`CurveErrorNow`)** — confirmed by reading every one of them:
+  they only mutate this file's own private C# statics, used for the
+  `--swos-smoke` dev diagnostic, and never write `Memory`/`BallSprite`/
+  `PlayerSprite`/`TeamData`. Omitted, documented, not stubbed — same
+  treatment as `MatchAudio` in steps 3/4. The `FaithfulBallControl` flag
+  (declared, never read anywhere in this file) is the same story.
+- **`MatchAudio.*`** (`PlayKick`/`GoodTackleComment`/`HeaderComment`/
+  `CancelGoodPass`/`EnqueueGoodPass`) — omitted at each call site. Two
+  functions (`StopGoodPassSample`, `EnqueuePlayingGoodPassSample`) mix an
+  audio call with a real `Memory` write; only the audio half is omitted,
+  the `Memory`-affecting half is ported in full.
+- **`PlayerControlled.IncSkillDuelOwnWin`/`IncSkillDuelOppWin`** — read the
+  whole of `PlayerControlled.cs` (1881 lines, step 6, not otherwise touched)
+  to confirm: one-line static counters, zero `Memory` effect. Omitted like
+  the telemetry above.
+- **`TeamDataLoader`** — forward-pulled as a **minimal slice**
+  (`swos_team_data_loader.h`): just `PlayerInfoSize` and the seven skill
+  offset constants (`OffPassing`..`OffFinishing`), needed because
+  `GetPlayerInfoForSprite` resolves a sprite to a `PlayerInfo` record
+  address and several functions then read skill bytes out of it.
+  Deliberately **not** ported: `WritePlayerInfos`/`WireTeamFields`, the
+  functions that actually *populate* those records from a loaded team file
+  — a different layer (match setup / team-file loading) that pulls in
+  `OpenSwos.Assets.TeamRecord`/`PlayerRecord`, `SkillScaling.cs`,
+  `TeamPort.cs`, and a `Godot.GD.Print` call. `GetPlayerInfoForSprite`
+  works correctly against a `PlayerInfo` block populated by any means (the
+  differential tests poke one directly into `Memory`), so nothing here
+  depends on those ever running.
+- **`PlayerEnergy`** — OpenSWOS's own optional, off-by-default fatigue
+  extension (its own header says original SWOS has no in-match stamina
+  mechanic). Still part of what `PlayerActions.cs` actually calls today, so
+  it's ported like anything else reached from here, not treated as
+  "not really SWOS" and skipped. Forward-pulled as a **minimal slice**
+  (`swos_player_energy.{h,c}`): only `EffectEnabled`/`ShotPenalty`/
+  `SpeedStep`, the three members this file actually calls (grep-verified).
+  The rest of `PlayerEnergy.cs` (`SeedSlot`/`DrainSlot`/`DrainOnTackle`/
+  `RecoverAtHalfTime`/etc.) is called from other not-yet-ported files —
+  port those calls when their callers are ported.
+
+**Differential tests, full VM/Memory state, same pattern as steps 2.5/4:**
+`tools/csharp-golden-dump/PlayerActionsGolden.cs` runs the real
+`PlayerActions.*` through 31 scenarios (speed table + injury handicap +
+fatigue penalty + pass-overlap boost + stoppage slowdown, both PlayerInfo-
+wired and PlayerInfo-unwired skill-lookup paths, the ball-pinning helpers,
+all three 50/50-duel outcomes, finishing/long/no-shot kicking, static/flying/
+lob heading, strong/weak tackles CPU and human, pass-with-target/pass-with-
+no-target, tackle-downtime CPU/human tables, the jump-header-hit animation
+gate, and the good-pass-sample state machine) and dumps the entire
+0x60000-byte buffer per scenario. `tests/test_player_actions_golden.c`
+replays each setup through the C port and byte-compares the full buffer.
+
+Getting the real `PlayerActions.cs` into the headless harness (replacing
+step 3's `PlayerActionsStub.cs`, now deleted per its own header's
+instruction) needed two new **minimal** compilation stand-ins —
+`TeamDataLoaderStub.cs` (the same 8 constants as
+`swos_team_data_loader.h`, verbatim) and `PlayerControlledStub.cs` (the
+same two one-line counters, verbatim) — plus five more `MatchAudioStub.cs`
+no-op methods for this file's audio call sites. `PlayerEnergy.cs` itself
+has no Godot dependency (confirmed by grep) and is referenced directly, not
+stubbed.
+
+**31/31 match byte-for-byte, first run** (after fixing two scenario-setup
+bugs in the C# harness caught by the C build/run before any comparison —
+slot-vs-address argument mixups in `PlayerSprite.SetDirection` calls, and
+one accidental "not a shot" branch from a wrong Y-coordinate gate — both
+fixed in `PlayerActionsGolden.cs` before regenerating the golden dumps).
+
+`make test` (six suites): **168/168** pass (26 + 44 + 2 + 40 + 25 + 31).
+
+Per the user's explicit instruction, the ARM/BlocksDS checkpoint is **not**
+repeated after this step alone — next one is after step 5.5, once both
+player modules are joined.
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
@@ -401,8 +495,10 @@ surprises found.
    `UpdateBallWithControllingGoalkeeper` (one function from
    `PlayerUpdate.cs`), `BallOutOfPlay.cs` (whole file), `UpdateGoals.cs`
    (whole file, minus the deferred `RegisterScorer` call)
-5. `PlayerActions.cs` — the rest of it (`SetPlayerAnimationTable` is
-   already done, step 3)
+5. ~~`PlayerActions.cs`~~ (2026-09-16, see Status above) — the rest of it
+   (`SetPlayerAnimationTable` was already done, step 3) — forward-pulled
+   minimal slices: `TeamDataLoader`'s `PlayerInfo` offset constants,
+   `PlayerEnergy`'s `EffectEnabled`/`ShotPenalty`/`SpeedStep`
 5.5. `PlayerUpdate.cs` — the rest of it (1553 - 35 lines; only
    `UpdateBallWithControllingGoalkeeper` is done, step 4). Not in the
    original plan at all — discovered as a `BallUpdate.cs` dependency.

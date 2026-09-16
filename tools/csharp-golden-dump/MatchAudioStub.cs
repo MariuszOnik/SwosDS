@@ -27,4 +27,12 @@ public static class MatchAudio
     public static void BarHitComment() { }
     public static void EnqueueCorner() { }
     public static void EnqueueThrowIn() { }
+
+    // Added for step 5 (PlayerActions.cs) -- same rationale as above, these
+    // are the audio call sites PlayerActions.cs itself makes.
+    public static void PlayKick() { }
+    public static void GoodTackleComment() { }
+    public static void HeaderComment() { }
+    public static void CancelGoodPass() { }
+    public static void EnqueueGoodPass() { }
 }
