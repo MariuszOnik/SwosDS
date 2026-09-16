@@ -1694,3 +1694,57 @@ separate follow-up rather than silently absorbed into Phase 1's closeout.
 Phase 1 regression scenarios). ARM9/BlocksDS (`nds-app/`): clean rebuild,
 zero warnings, `swos_vm_ds_app.nds` built successfully (build-only check --
 this phase is headless/desktop-only work, no renderer or on-device changes).
+
+### Status: Phase 1 follow-up (2026-09-16) — `TacticsLoader.LoadAllTactics()` ported, bootstrap wired
+
+Narrow, scoped action on the audit finding above -- NOT the rest of
+`InitSwosVmFromMatchSetup`'s chain, which remains future work (see the
+report above for the full list still missing).
+
+`TacticsLoader.cs`'s `LoadAllTactics()` is a self-contained function (no
+Godot, no file I/O -- the 12 built-in 370-byte tactic structs are literal
+data baked into the C# source, mechanically extracted here via
+`tools/extract_all_arrays.py` into `include/generated/swos_tactics_data.h`,
+same technique as every other literal-table extraction in this repo -- the
+extractor's emitted-C-type was previously hardcoded to `int16_t`, now an
+explicit `{short: int16_t, byte: uint8_t, int: int32_t}` map so it can emit
+`uint8_t` tables too). Ported to `include/swos_tactics_loader.h`/
+`src/swos_tactics_loader.c` (`swosTacticsLoaderLoadAllTactics()`); the rest
+of `TacticsLoader.cs` (nothing else -- the whole file is just this one
+function plus its data) needed no scoping decision.
+
+Wired into both bootstraps at the same call point (before kickoff-prep,
+matching `Main.cs`'s real order): `match_bootstrap.c`'s `bootstrapCommon()`
+(used by both `dsBootstrapMatch()` and `dsBootstrapMatchSeeded()`) and
+`Step12IntegrationGolden.cs`'s `Bootstrap(int seed)`. Also set
+`TeamData.OffTactics = 5` (4-3-3) for both teams in each bootstrap's
+`seedTeamData()` -- previously never set at all (implicitly 0 = tact_4_4_2
+via the zero-fill), now matching `TeamDataLoader.WireTeamFields`'s real
+`defaultTacticsIndex` default.
+
+**Result: the fix is real (confirmed via a fresh empirical check --
+`teamTacticsPool` is no longer all-zero) but does NOT eliminate the stall
+on its own**, only delays it modestly -- consistent with this being one
+piece of a larger missing initialization chain, not the whole story. Full
+`make lockstep-long`, all three seeds, up to 100000 ticks or stall:
+
+| seed | ticks matched (before fix) | ticks matched (after fix) |
+|---|---|---|
+| 0 | 13025 (stall @ 12725) | 13352 (stall @ 13052) |
+| 12345 | 12440 (stall @ 12140) | 13363 (stall @ 13063) |
+| 987654321 | 12127 (stall @ 11827) | 13928 (stall @ 13628) |
+
+C still matches C# byte-for-byte through every compared tick, in both
+columns -- the port itself is unaffected by this bootstrap change, exactly
+as expected (both engines apply the identical fix). `make test`: still
+17/17. ARM9/BlocksDS (`nds-app/`): clean rebuild, zero warnings.
+
+**Next step, if this thread is picked up again:** port the remaining
+pieces of the real `InitSwosVmFromMatchSetup` chain (`GameTime.SaveTeams`/
+`InitPlayerCardChance`/`DetermineStartingTeamAndTeamPlayingUp`,
+`Pitch.SetPitchTypeAndNumber`, `GameTime.InitGameVariables`, the real
+`TeamDataLoader.WritePlayerInfos`/`WireTeamFields`, `PlayerEnergy.
+SetMatchLength`, `Kickoff.StartingMatch`'s real
+`InitPlayersBeforeEnteringPitch` entrance sequence, `Bench.
+InitBenchBeforeMatch`) and re-run the lockstep to see whether the stall
+disappears entirely once the bootstrap actually matches production.

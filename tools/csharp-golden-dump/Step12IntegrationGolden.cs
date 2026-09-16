@@ -95,6 +95,12 @@ public static class Step12IntegrationGolden
         }
     }
 
+    // Same default the real production loader uses --
+    // TeamDataLoader.WireTeamFields's defaultTacticsIndex parameter defaults
+    // to 5 (4-3-3), Main.cs never overrides it. See Bootstrap()'s PHASE 1
+    // comment for why this now matters (paired with TacticsLoader.LoadAllTactics()).
+    private const int DefaultTacticsIndex = 5;
+
     private static void SeedTeamData(bool top, int playerInfoBase)
     {
         int teamBase = TeamData.Base(top);
@@ -102,6 +108,11 @@ public static class Step12IntegrationGolden
         // playerNumber=0 on both teams -> both AI-controlled, matching
         // match_bootstrap.c's first AI-vs-AI milestone.
         Memory.WriteWord(teamBase + TeamData.OffPlayerNumber, 0);
+        // PHASE 1 BOOTSTRAP FIX (2026-09-16): was never set at all
+        // (implicitly 0 = tact_4_4_2 via Memory.Init's zero-fill) -- now
+        // matches the real production default, mirrored exactly in
+        // match_bootstrap.c's seedTeamData().
+        Memory.WriteWord(teamBase + TeamData.OffTactics, DefaultTacticsIndex);
 
         if (top)
             Memory.WriteDword(Memory.Addr.topTeamInGame, playerInfoBase);
@@ -166,6 +177,15 @@ public static class Step12IntegrationGolden
 
         SeedTeamData(true, PlayerInfoTopBase);
         SeedTeamData(false, PlayerInfoBottomBase);
+
+        // PHASE 1 BOOTSTRAP FIX (2026-09-16): mirrors match_bootstrap.c's
+        // matching call -- the real InitSwosVmFromMatchSetup (Main.cs) calls
+        // TacticsLoader.LoadAllTactics() before Kickoff.StartingMatch();
+        // this synthetic bootstrap never did, leaving teamTacticsPool
+        // entirely zero (see this file's Phase 1 header comment / README.md
+        // "Status: Phase 1" for the audit that found this). Same call point
+        // here, before Kickoff.PrepareForInitialKick() below.
+        TacticsLoader.LoadAllTactics();
 
         Kickoff.PrepareForInitialKick();
         Camera.SetCameraToInitialPosition();

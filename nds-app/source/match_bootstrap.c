@@ -10,6 +10,7 @@
 #include "swos_memory.h"
 #include "swos_player_sprite.h"
 #include "swos_rng.h"
+#include "swos_tactics_loader.h"
 #include "swos_team_data.h"
 #include "swos_team_data_loader.h"
 
@@ -68,6 +69,12 @@ static void seedTeamSprites(bool top, const int16_t *fx, const int16_t *fy)
     }
 }
 
+// Same default tactics index the real production loader uses --
+// TeamDataLoader.WireTeamFields's defaultTacticsIndex parameter defaults to
+// 5 (4-3-3), Main.cs never overrides it. See PHASE 1 note below for why
+// this now matters.
+#define DEFAULT_TACTICS_INDEX 5
+
 static void seedTeamData(bool top, int playerInfoBase)
 {
     int teamBase = swosTeamDataBase(top);
@@ -77,6 +84,12 @@ static void seedTeamData(bool top, int playerInfoBase)
     // A human-controlled team is a straightforward follow-up: set this to
     // 1 or 2 and feed swosInputControlsSetJoystickState() from the pad.
     swosWriteWord(teamBase + TEAMDATA_OFF_PLAYER_NUMBER, 0);
+    // PHASE 1 BOOTSTRAP FIX (2026-09-16): was never set at all (implicitly
+    // 0 = tact_4_4_2 via swosMemoryInit's zero-fill) -- now matches the real
+    // production default. Only meaningful now that swosTacticsLoaderLoadAll
+    // Tactics() below actually populates the pool; harmless before that
+    // (index into a real 370-byte struct regardless).
+    swosWriteWord(teamBase + TEAMDATA_OFF_TACTICS, DEFAULT_TACTICS_INDEX);
 
     swosWriteDword(top ? ADDR_topTeamInGame : ADDR_bottomTeamInGame, (uint32_t)playerInfoBase);
 }
@@ -91,6 +104,21 @@ static void bootstrapCommon(void)
 
     seedTeamData(true, PLAYERINFO_TOP_BASE);
     seedTeamData(false, PLAYERINFO_BOTTOM_BASE);
+
+    // PHASE 1 BOOTSTRAP FIX (2026-09-16): the real production
+    // InitSwosVmFromMatchSetup (Main.cs) calls TacticsLoader.LoadAllTactics()
+    // before Kickoff.StartingMatch() -- this synthetic bootstrap never did,
+    // leaving Memory.Addr.teamTacticsPool entirely zero (confirmed via the
+    // Phase 1 lockstep audit, see README.md "Status: Phase 1"). Narrow,
+    // scoped fix: populate the real tactic tables now, same call point
+    // (before the kickoff-prep call below). Does NOT port the rest of
+    // InitSwosVmFromMatchSetup's chain (GameTime.SaveTeams/
+    // InitPlayerCardChance/DetermineStartingTeamAndTeamPlayingUp,
+    // Pitch.SetPitchTypeAndNumber, GameTime.InitGameVariables, the real
+    // team-file-driven TeamDataLoader.WritePlayerInfos/WireTeamFields,
+    // PlayerEnergy.SetMatchLength, Kickoff.StartingMatch,
+    // Bench.InitBenchBeforeMatch) -- those remain a separate follow-up.
+    swosTacticsLoaderLoadAllTactics();
 
     // Real ported logic: ball to centre spot, per-team reset (reads back
     // the sprite positions just seeded above to set restful dest_x/dest_y),

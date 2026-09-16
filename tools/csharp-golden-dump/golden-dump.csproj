@@ -75,6 +75,11 @@
          per-tick orchestrator itself, now that every real dependency it
          reaches has landed). -->
     <Compile Include="../../../openswos/game/scripts/Sim/Port/GameLoop.cs" />
+    <!-- Phase 1 bootstrap-completeness follow-up (2026-09-16): TacticsLoader.cs
+         (only LoadAllTactics() is ported to C, see swos_tactics_loader.h,
+         but the whole file compiles fine here, self-contained, no stub
+         needed). -->
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/TacticsLoader.cs" />
     <!-- MatchAudioStub.cs, TeamDataLoaderStub.cs, PlayerControlledStub.cs,
          GodotStub.cs, AiStub.cs, BallSimStub.cs (this directory) are
          auto-included by the SDK; see each one's header comment for why
