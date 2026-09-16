@@ -83,9 +83,10 @@ typedef struct {
     //      swos_render_frames.h's swosRenderFramesLookup() already logged
     //      an explicit "MISSING IMAGE" line for this case);
     //   2. it IS a real, valid SWOS sprite (real anchorX/anchorY below) but
-    //      Phase 3 only mapped its geometry, not a pixel texture -- most
-    //      goalkeeper/referee/bench/tackle/header/injury/celebration frames
-    //      today (see swos_render_frames.h's SWOS_RENDER_ATLAS_NONE).
+    //      only its geometry has been mapped, not a pixel texture -- most
+    //      referee/bench/tackle/header/injury/celebration frames today
+    //      (goalkeepers got a real atlas in Phase 5; see swos_render_frames.h's
+    //      SWOS_RENDER_ATLAS_NONE).
     // atlasId/atlasFrame are only meaningful when this is true.
     bool imageResolved;
 

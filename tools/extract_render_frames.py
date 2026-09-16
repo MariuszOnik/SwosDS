@@ -48,6 +48,16 @@ PHASE 4 addendum (2026-09-16): tools/extract_team2_atlas.py built a second
 real pixel texture (nds-app/graphics/player_atlas_team2_texture.png,
 global 644-744, reusing this exact atlas layout) -- atlas_for() below now
 maps that range to ATLAS_PLAYER_TEAM2 instead of ATLAS_NONE.
+
+PHASE 5 addendum (2026-09-16): tools/extract_keeper_atlas.py built a real
+pixel texture for both goalkeepers (nds-app/graphics/keeper_atlas_texture.png,
+a genuinely new bin-packing of GOAL1.DAT's 116 sprites, not a layout reuse
+like Phase 4's team2 atlas -- goalkeeper geometry is unrelated to the
+outfield-player atlas). Team2's keeper range (1063-1178) is the SAME
+physical 116 sprites mirrored, per this file's own ordinal-range comment
+above, so atlas_for() maps BOTH 947-1062 and 1063-1178 onto the one
+ATLAS_KEEPER texture, with local frame = ordinal - 947 / ordinal - 1063
+respectively (same numbering space, since they're the same pixels).
 """
 import re
 import struct
@@ -78,6 +88,7 @@ ATLAS_NONE = -1        # geometry known, no pixel texture built yet
 ATLAS_PLAYER = 0       # nds-app/graphics/player_atlas_texture.png, 101 frames, global 341-441 (home)
 ATLAS_BALL = 1         # nds-app/graphics/ball_atlas_texture.png, 5 frames, global 1179-1183
 ATLAS_PLAYER_TEAM2 = 2 # nds-app/graphics/player_atlas_team2_texture.png (Phase 4), 101 frames, global 644-744 (away)
+ATLAS_KEEPER = 3       # nds-app/graphics/keeper_atlas_texture.png (Phase 5), 116 frames, global 947-1062 (team1) / 1063-1178 (team2, same physical sprites)
 
 
 def parse_dat(path, start_ordinal, expect_count=None):
@@ -201,6 +212,10 @@ def atlas_for(ordinal):
         return ATLAS_PLAYER, ordinal - 341
     if 644 <= ordinal <= 744:
         return ATLAS_PLAYER_TEAM2, ordinal - 644
+    if 947 <= ordinal <= 1062:
+        return ATLAS_KEEPER, ordinal - 947
+    if 1063 <= ordinal <= 1178:
+        return ATLAS_KEEPER, ordinal - 1063  # same physical goal1.dat sprites, mirrored
     if 1179 <= ordinal <= 1183:
         return ATLAS_BALL, ordinal - 1179
     return ATLAS_NONE, -1

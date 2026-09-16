@@ -42,7 +42,7 @@ typedef enum {
 } SwosRenderFrameCategory;
 
 // atlasId values -- MUST match tools/extract_render_frames.py's ATLAS_*
-// constants. Only three real pixel atlases exist today; everything else is
+// constants. Only four real pixel atlases exist today; everything else is
 // SWOS_RENDER_ATLAS_NONE until a future extraction pass builds more.
 #define SWOS_RENDER_ATLAS_NONE   (-1)
 #define SWOS_RENDER_ATLAS_PLAYER       0  // nds-app/graphics/player_atlas_texture.png, 101 frames (global 341-441, home team)
@@ -55,6 +55,15 @@ typedef enum {
 // local numbering (0-100) and can be looked up in the SAME PLAYER_texcoords[]
 // table nds-app already has -- only which texture to bind differs.
 #define SWOS_RENDER_ATLAS_PLAYER_TEAM2 2  // nds-app/graphics/player_atlas_team2_texture.png, 101 frames (global 644-744, away team)
+// PHASE 5 (2026-09-16): both goalkeepers' real pixel texture, a genuinely
+// new bin-packing of GOAL1.DAT (see tools/extract_keeper_atlas.py) -- not a
+// layout reuse like ATLAS_PLAYER_TEAM2, since goalkeeper geometry is
+// unrelated to the outfield-player atlas. Team2's keeper range (1063-1178)
+// is the SAME PHYSICAL 116 sprites mirrored (sprites.txt: "116 pointers to
+// goal1.dat / 116 -||-"), so BOTH SWOS_RENDER_FRAME_CAT_KEEPER_TEAM1 and
+// _KEEPER_TEAM2 resolve into this ONE atlas/texture, each with its own
+// atlasFrame (0-115) into the SAME KEEPER_texcoords[] table.
+#define SWOS_RENDER_ATLAS_KEEPER       3  // nds-app/graphics/keeper_atlas_texture.png, 116 frames (global 947-1062 team1 / 1063-1178 team2, same physical sprites)
 
 typedef struct {
     bool valid;               // true iff a real SWOS sprite header exists at this ordinal

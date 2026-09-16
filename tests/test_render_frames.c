@@ -74,18 +74,22 @@ static void test_known_spot_checks(void) {
           "global 644 resolves to the team2 player atlas, local frame 0");
 
     // Global 947 = GOAL1.DAT's first sprite (team1 main goalkeeper).
+    // PHASE 5: now resolves to the real keeper atlas (tools/extract_keeper_atlas.py).
     CHECK(swosRenderFramesLookup(947, &info) && info.category == SWOS_RENDER_FRAME_CAT_KEEPER_TEAM1,
           "global 947 is categorized as a team1 keeper frame");
-    CHECK(info.atlasId == SWOS_RENDER_ATLAS_NONE,
-          "global 947 has real geometry but no built atlas texture yet (goalkeeper frames aren't extracted as pixels in this phase)");
+    CHECK(info.atlasId == SWOS_RENDER_ATLAS_KEEPER && info.atlasFrame == 0,
+          "global 947 resolves to the keeper atlas, local frame 0");
 
-    // Global 1063 = the SAME goal1.dat sprite 0, mirrored for team2's keeper.
+    // Global 1063 = the SAME goal1.dat sprite 0, mirrored for team2's keeper --
+    // same atlas, same local frame numbering (ordinal - 1063 == ordinal - 947 here).
     SwosRenderFrameInfo keeper1, keeper2;
     CHECK(swosRenderFramesLookup(947, &keeper1) && swosRenderFramesLookup(1063, &keeper2) &&
           keeper1.centerX == keeper2.centerX && keeper1.centerY == keeper2.centerY &&
           keeper1.width == keeper2.width && keeper1.height == keeper2.height,
           "team1/team2 goalkeeper geometry mirrors (same physical goal1.dat sprites, per sprites.txt)");
-    CHECK(keeper2.category == SWOS_RENDER_FRAME_CAT_KEEPER_TEAM2, "global 1063 is categorized as a team2 keeper frame");
+    CHECK(keeper2.category == SWOS_RENDER_FRAME_CAT_KEEPER_TEAM2 &&
+          keeper2.atlasId == SWOS_RENDER_ATLAS_KEEPER && keeper2.atlasFrame == 0,
+          "global 1063 is categorized as a team2 keeper frame and resolves to the SAME keeper atlas, local frame 0");
 
     // Ball frames: 1179-1182 animate, 1183 is the single fixed shadow --
     // both extracted as real pixel atlas frames already (ball_atlas.png).

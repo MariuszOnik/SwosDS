@@ -100,12 +100,14 @@ static void test_build_frame(void) {
     swosPlayerSpriteSetYPixels(0, 200);
     swosPlayerSpriteSetImageIndex(0, 348);
 
-    // Slot 11: bottom team, an image index outside the known 101-frame
-    // atlas range -- must come back unresolved, not silently substituted.
+    // Slot 11: bottom team, an image index with known geometry but no built
+    // atlas texture (bench player, still SWOS_RENDER_ATLAS_NONE as of Phase 5
+    // -- unlike 947-1178, which now resolves to the real keeper atlas) --
+    // must come back unresolved, not silently substituted.
     swosPlayerSpriteSetTeamNumber(11, 2);
     swosPlayerSpriteSetXPixels(11, 300);
     swosPlayerSpriteSetYPixels(11, 400);
-    swosPlayerSpriteSetImageIndex(11, 999);
+    swosPlayerSpriteSetImageIndex(11, 1300);
 
     // Every other slot keeps swosMemoryInit's own default team assignment
     // (PlayerSprite.Init() already assigns all 22 slots a valid team 1/2,
@@ -159,7 +161,7 @@ static void test_build_frame(void) {
     if (p11) {
         CHECK(p11->team == 2, "build frame: slot 11 team");
         CHECK(!p11->imageResolved && p11->atlasFrame == -1,
-              "build frame: slot 11 image 999 is outside the known atlas range -- explicitly unresolved, not a silent standing-frame fallback");
+              "build frame: slot 11 image 1300 has no built atlas texture yet -- explicitly unresolved, not a silent standing-frame fallback");
     }
 
     // maxCommands cap: pass a buffer too small to hold everything and

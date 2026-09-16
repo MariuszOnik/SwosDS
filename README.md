@@ -2134,3 +2134,71 @@ than adding a new item to it.
 
 `make test`: 19/19. ARM9/BlocksDS (`nds-app/`), `sdl-debug/`, and
 `sprite-lab/`: all three clean rebuilds. Separate commit.
+
+## Status: Phase 5 (2026-09-16) — real goalkeeper texture atlas, both teams
+
+Closes the gap Phase 4 bugfixes confirmed with real data (both keepers
+symmetrically invisible, `RENDER_FRAMES[947..1178].atlasId ==
+SWOS_RENDER_ATLAS_NONE`): new `tools/extract_keeper_atlas.py` decodes
+`GOAL1.DAT`'s real 116 sprites (same `decode_sprites.py` technique as every
+prior atlas) and, unlike Phase 4's team2 atlas (which reused the existing
+`PLAYER_texcoords[]` layout since TEAM1.DAT/TEAM2.DAT share identical
+per-frame geometry), does a genuinely NEW bin-packing pass -- goalkeeper
+sprite geometry (max frame 16x20, ~23720px total content) has nothing to
+piggyback on. Packing uses BlocksDS's own `squeezer` tool
+(`tools/squeezer/squeezerw.exe`, confirmed present on this machine and the
+SAME tool DEVLOG.md records building the original `player_atlas_texture.png`
+-- invoked via `subprocess`, not by hand, so the atlas is reproducible from
+the script alone), the same tool/technique the project's own history already
+established, just newly automated end-to-end rather than run once by hand.
+
+**One atlas, not two.** `tools/extract_render_frames.py`'s own ordinal-range
+comment (and `swos-port/docs/SWOS/sprites.txt`'s "116 pointers to goal1.dat
+/ 116 -||-") says team2's keeper range (1063-1178) is the SAME PHYSICAL 116
+`GOAL1.DAT` sprites mirrored, not a separately colored kit file like
+TEAM2.DAT -- so a single `SWOS_RENDER_ATLAS_KEEPER` texture serves both
+`SWOS_RENDER_FRAME_CAT_KEEPER_TEAM1` and `_KEEPER_TEAM2`, `atlasFrame`
+computed as `ordinal - 947` / `ordinal - 1063` into the same
+`KEEPER_texcoords[]` table.
+
+**Atlas canvas: 256x128, not 256x256.** DS VRAM texture pool (banks A+B via
+`vramSetBankA/B(..._TEXTURE)` in `nds-app/source/main.c`) is a fixed 256KB;
+the two existing 256x256 player atlases + ball atlas + pitch tiles already
+use ~193KB, leaving ~63KB. A third 256x256 atlas (64KB) would have narrowly
+overflowed that budget. 256x128 (32KB, still a valid DS power-of-two texture
+size on each axis) comfortably holds the real content -- squeezer's own
+occupancy report at that size is 0.72.
+
+**Wired in exactly like the other atlases**, no new mechanism: `atlas_for()`
+in `tools/extract_render_frames.py` maps both keeper ordinal ranges onto the
+new `ATLAS_KEEPER` id; `include/swos_render_frames.h` gained the matching
+`SWOS_RENDER_ATLAS_KEEPER` define; `nds-app/source/main.c` loads the new
+sprite set (`glLoadSpriteSet`) and binds it in `drawResolvedCommand`'s
+switch; `sprite-lab/` (both `main.c`'s `textureAndSrcRectFor` and its
+Makefile's object list) gained the same texture so both keepers are visible
+there too, not just on the DS. `tests/test_render_frames.c`'s two spot
+checks that previously asserted `947`/`1063` were still `ATLAS_NONE` now
+assert they resolve to `ATLAS_KEEPER`; `tests/test_render_commands.c`'s
+"deliberately unresolved" probe frame moved from image index 999 (which
+Phase 5 now resolves, since it falls in 947-1062) to 1300 (a bench frame,
+still genuinely unresolved).
+
+`make test`: 19/19 (full clean rebuild required -- the desktop Makefile has
+no header-dependency tracking, so a `make clean` was needed after
+regenerating `include/generated/swos_render_frames_data.h` for the new
+atlas mapping to actually take effect; this also required regenerating
+`build/golden/*.bin` via the C# harness, since `make clean` removes it).
+ARM9/BlocksDS (`nds-app/`): clean rebuild, `keeper_atlas_texture.png`
+grit-converts automatically via the existing generic `GFXDIRS` rule.
+`sdl-debug/`: clean rebuild (unaffected -- doesn't touch atlas code).
+`sprite-lab/`: clean rebuild, headless smoke run confirmed no crash (same
+verification bar as Phase 4 -- full visual confirmation on melonDS/hardware
+is still the user's own next step, this environment has no DS emulator).
+Separate commit.
+
+**Not done in this phase:** referee and bench players still have no texture
+(`SWOS_RENDER_ATLAS_NONE`) and are never drawn at all (zero draw call, not
+just an unresolved one) -- both remain the same already-documented backlog
+items from Phase 3/4, untouched here. worldY-based draw sorting is also
+still not wired into `nds-app/source/main.c` (commands draw in slot order,
+not depth order) -- unrelated to this phase, not started yet.
