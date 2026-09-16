@@ -2202,3 +2202,27 @@ just an unresolved one) -- both remain the same already-documented backlog
 items from Phase 3/4, untouched here. worldY-based draw sorting is also
 still not wired into `nds-app/source/main.c` (commands draw in slot order,
 not depth order) -- unrelated to this phase, not started yet.
+
+### Status: Phase 5 follow-up (2026-09-16) — distinguishable team2 kit colors
+
+The user reported both teams looked "very similar, can't tell which is
+which" on real hardware. Root cause: `tools/extract_team2_atlas.py` (Phase
+4) only changed the kit PIXEL PATTERN (TEAM2.DAT's own stripe/sleeve
+layout) but never touched the PALETTE -- both team1's and team2's atlases
+were built from `resolve_face_palette(raw_palette, "white")` with the kit
+color slots (10 body / 11 accent / 14 shorts / 15 socks, per
+`openswos/game/scripts/Assets/KitPalette.cs`'s own documented slot
+convention) left at PAL.256's raw, unmodified values -- so both teams
+rendered in the exact same red/blue/green/yellow, only distinguishable by
+stripe direction (easy to miss at DS resolution).
+
+Fix: `extract_team2_atlas.py` now overrides those four slots for team2 only
+(team1's atlas, copied from swos-ds, is left untouched) with a plain
+white-shirt/black-shorts kit -- RGB values taken from `KitPalette.cs`'s own
+named-color table (`Colours[1]` white, `Colours[2]` black), not invented,
+chosen for maximum contrast against team1's colors rather than any specific
+real team (this placeholder match has no real team-file data loaded at all
+yet, same honest-simplification precedent as Step 12's hand-picked
+formation). `make test`: 19/19 (unaffected -- pure pixel-data change, no
+`src`/`include` logic touched). `nds-app/` and `sprite-lab/`: rebuilt
+picking up the new texture. Separate commit.

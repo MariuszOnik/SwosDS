@@ -57,11 +57,36 @@ def load_texcoords():
     return [tuple(nums[i:i + 4]) for i in range(0, len(nums), 4)]
 
 
+# Kit-color palette slots (openswos/game/scripts/Assets/KitPalette.cs:
+# "Slot 10 = shirt body, slot 11 = stripes/sleeves accent, 14 = shorts,
+# 15 = socks"). Team1's atlas (swos-ds's extract_player_frames.py, copied
+# into this project) never overrides these -- it renders PAL.256's raw,
+# unmodified values there (red/blue/green/yellow). Left as-is for team1
+# so its atlas stays byte-identical to what's already shipping; team2
+# gets an explicit override below so the two teams are visually
+# distinguishable on real hardware (both looked near-identical before --
+# same raw palette, only the kit PIXEL PATTERN differed). Colors are
+# KitPalette.cs's own named RGB values (Colours[1] white, Colours[2]
+# black), not invented -- a plain white-shirt/black-shorts kit, chosen
+# for maximum contrast against team1's red/blue/green/yellow rather than
+# any specific real team (this placeholder match has no real team-file
+# data at all yet, same honest-simplification precedent as Step 12's
+# hand-picked formation).
+TEAM2_KIT_OVERRIDE = {
+    10: (0xFF, 0xFF, 0xFF),  # body: white
+    11: (0x00, 0x00, 0x00),  # accent (sleeves/stripes): black
+    14: (0x00, 0x00, 0x00),  # shorts: black
+    15: (0xFF, 0xFF, 0xFF),  # socks: white
+}
+
+
 def main():
     gog_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_GOG_DIR
 
     raw_palette = load_palette(gog_dir / "PAL.256")
     palette = resolve_face_palette(raw_palette, "white")  # same default face as player_atlas_texture.png
+    for slot, rgb in TEAM2_KIT_OVERRIDE.items():
+        palette[slot] = rgb
 
     buf, sprites = scan_dat_file(gog_dir / "TEAM2.DAT", max_sprites=1000)
     assert len(sprites) == 303, f"expected 303 sprites in TEAM2.DAT, got {len(sprites)}"
