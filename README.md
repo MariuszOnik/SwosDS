@@ -290,22 +290,107 @@ the table above is the completed coverage.
 `make test` (five suites): **112/112** pass (26 + 44 + 2 + 40, up from
 95/95 with 23 `SpriteUpdate` checks before the follow-up).
 
-## Porting order (full plan)
+## Status: step 4 (2026-09-16) — `BallUpdate`, plus a real dependency-graph discovery
+
+`BallUpdate.cs` (1795 lines — `Tick()`/`TickPhysicsOnly()`, both goto-heavy
+`Section3_ApplyDeltasAndBounce`/`Section4_GoalDetectionAndShadow`, spin/
+kick-boost `ApplyBallAfterTouch`, and the small position/timer helpers) is
+fully ported to `swos_ball_update.{h,c}`, `goto`/labels preserved verbatim
+(C supports them natively, same as C#) rather than restructured into
+if/else.
+
+**The plan doesn't survive contact with the actual file graph, and that's
+fine.** `BallUpdate.cs` calls two functions this repo hadn't touched:
+`PlayerUpdate.UpdateBallWithControllingGoalkeeper` (`PlayerUpdate.cs`, 1553
+lines) and `BallOutOfPlay.CheckIfBallOutOfPlay` (`BallOutOfPlay.cs`, 766
+lines) — neither file appears anywhere in the original 12-step plan, which
+treated "BallUpdate" as one monolithic step. Per the standing rule (no
+stubs that fake gameplay logic, no silent scope quietly ballooning either),
+the actual approach taken:
+
+- `UpdateBallWithControllingGoalkeeper` (35 lines) turned out fully
+  self-contained (Memory/BallSprite/PlayerSprite only) — pulled forward
+  verbatim into `swos_player_update.{h,c}`, same pattern as step 3's
+  `SetPlayerAnimationTable`.
+- `BallOutOfPlay.cs` (whole file) ported in full to
+  `swos_ball_out_of_play.{h,c}` — its own dependencies turned out to be
+  `Memory`/`BallSprite`/`PlayerSprite`/`TeamData`/`Rng` (all already done)
+  plus two more previously-unseen files, handled the same way:
+  - `UpdateGoals.cs` (175 lines, `BumpTeamGoals` + `GoalScored`) ported in
+    full to `swos_update_goals.{h,c}` — **except** the one call at the very
+    end of `GoalScored` to `Result.RegisterScorer` (a scorer-list UI/stats
+    side effect that needs `GameTime.cs`, a much later step, plus C#
+    arrays that live entirely outside the emulated `Memory` buffer). That
+    one call is `PORT_PENDING`: a `NULL`-defaulting function-pointer hook
+    (`swosRegisterScorerHook`) in place of the call, not a stub pretending
+    to run it — see `swos_update_goals.h`'s header comment. Nothing in
+    `GoalScored`/`CheckIfBallOutOfPlay` branches on what `RegisterScorer`
+    would have returned, so this doesn't affect match-simulation state or
+    control flow, only a results-screen name list.
+  - `MatchAudio.*` (11 call sites across `BallUpdate.cs`/`BallOutOfPlay.cs`)
+    — confirmed by reading every call site: bodies are `Instance?.DoX()`
+    into a Godot audio-player singleton, zero `Memory`/game-state writes.
+    Omitted, not stubbed — there is no simulation logic in them to fake.
+    Documented here rather than claimed as "full program parity": a real
+    DS build will need its *own* audio triggers wired in at these exact
+    points eventually, just never as part of this VM-fidelity layer.
+
+**Differential tests, full VM/Memory state per review request:**
+`tools/csharp-golden-dump/BallUpdateGolden.cs` runs the real
+`BallUpdate.Tick()`/`ApplyBallAfterTouch()` through 25 scenarios (friction
+under possession/free-ball/air/clamp-to-zero, small/loud/extreme-height
+bounces, all three keeper-holds-ball Z branches including the
+`UpdateBallWithControllingGoalkeeper` call, X/Y barrier bounces, upper/
+lower goals, penalty bar-deflect, corner/throw-in/goal-out dispatch, and
+every `ApplyBallAfterTouch` branch: left/right spin, high/normal kick
+boost, long-pass boost, spin-timer expiry) and dumps the **entire
+0x60000-byte buffer** per scenario (not just a function's return value).
+`tests/test_ball_update_golden.c` replays each setup through the C port and
+byte-compares the full buffer.
+
+**25/25 match byte-for-byte, first run.** Since `BallUpdate.cs`/
+`BallOutOfPlay.cs` need `MatchAudio` and `PlayerUpdate.cs`/`UpdateGoals.cs`
+to even compile, the C# harness needed compilation stand-ins too —
+`MatchAudioStub.cs` (no-op, matches the real `Instance?.DoX()` behavior
+exactly — the real class can't be referenced anyway, it's a Godot `Node`
+subclass this headless harness has no engine reference for),
+`PlayerUpdateStub.cs` (verbatim `UpdateBallWithControllingGoalkeeper`,
+diffed against the source to confirm), and `UpdateGoalsStub.cs` (verbatim
+`BumpTeamGoals`/`GoalScored` minus the same `RegisterScorer` call the C
+port defers, diffed against the source to confirm everything else is
+unchanged). All three are compilation/scope stand-ins, not approximated
+game logic.
+
+`make test` (six suites): **137/137** pass (26 + 44 + 2 + 40 + 25).
+
+## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
 2. ~~Sprite views: `BallSprite`, `PlayerSprite`, `TeamData`~~ (2026-09-15, see Status above)
    - ~~2.5: `AnimationTablesData` + full `Memory.Init()`, golden-dump verified~~ (2026-09-15, see Status above)
 3. ~~`SpriteUpdate`~~ (2026-09-16, see Status above)
-4. `BallUpdate`
-5. `PlayerActions`
+4. ~~`BallUpdate`~~ (2026-09-16, see Status above) — pulled forward and
+   fully ported alongside it: `UpdateBallWithControllingGoalkeeper` (one
+   function from `PlayerUpdate.cs`), `BallOutOfPlay.cs` (whole file),
+   `UpdateGoals.cs` (whole file, minus the deferred `RegisterScorer` call)
+5. `PlayerActions` — the rest of it; `SetPlayerAnimationTable` is already
+   done (step 3)
+   - `PlayerUpdate.cs` — the rest of it (1553 - 35 lines); only
+     `UpdateBallWithControllingGoalkeeper` is done (step 4). Not previously
+     in this plan at all -- discovered as a `BallUpdate.cs` dependency.
 6. `PlayerControlled`
 7. `UpdatePlayers`
 8. `InputControls`
 9. `AiHelpers`, `AiBrain`
-10. `SetPieces`, `GameTime`, `Referee`
+10. `SetPieces`, `GameTime`, `Referee` — `GameTime.cs` also unblocks
+    `Result.RegisterScorer`'s `PORT_PENDING` hook (step 4's
+    `swosRegisterScorerHook`)
 11. `GameLoop` orchestration
 12. Adapter from VM state to the DS renderer (mirrors `swos-ds`'s
     `game_state.c` `swosTick()` boundary)
+
+Also newly discovered, not slotted into a specific step yet: `Result.cs`
+(407 lines, needed to wire up `RegisterScorer`).
 
 After each module: desktop build + tests, diff against OpenSWOS behavior
 where practical, periodic `.nds` build once there's something to render.

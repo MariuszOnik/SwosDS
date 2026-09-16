@@ -1,0 +1,30 @@
+// Stand-in for OpenSwos.Audio.MatchAudio, needed so BallUpdate.cs and
+// BallOutOfPlay.cs (which call it directly) can compile here WITHOUT a
+// Godot engine reference -- the real MatchAudio.cs is `partial class
+// MatchAudio : Node` (a Godot scene node), which this headless console
+// harness has no SDK for and, per this project's step-4 scope decision,
+// deliberately doesn't need: every one of these calls is confirmed
+// audio-only (`Instance?.DoX()` into a Godot audio player, zero Memory/
+// game-state writes -- see swos-vm-c/include/swos_ball_update.h for the
+// full rationale). The real MatchAudio.cs's own doc comment confirms this
+// independently: "every public trigger is static and no-op safe when
+// Instance is null (headless / harness / before a match)" -- Instance is
+// never set outside a running Godot scene, so these calls already no-op
+// exactly like this even in the real game. This stub just lets that happen
+// without a Godot reference.
+namespace OpenSwos.Audio;
+
+public static class MatchAudio
+{
+    public static void PlayBounce() { }
+    public static void PlayGoal() { }
+    public static void PlayMissGoal() { }
+    public static void PlayWhistle() { }
+    public static void GoalComment() { }
+    public static void OwnGoalComment() { }
+    public static void NearMissComment() { }
+    public static void PostHitComment() { }
+    public static void BarHitComment() { }
+    public static void EnqueueCorner() { }
+    public static void EnqueueThrowIn() { }
+}

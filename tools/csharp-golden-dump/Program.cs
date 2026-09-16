@@ -27,5 +27,6 @@ File.WriteAllBytes(amigaPath, amigaDump);
 Console.WriteLine($"wrote {amigaDump.Length} bytes to {amigaPath}");
 
 SpriteUpdateGolden.Run(outDir);
+BallUpdateGolden.Run(outDir);
 
 return 0;

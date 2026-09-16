@@ -34,9 +34,14 @@
     <Compile Include="../../../openswos/game/scripts/SwosVm/TeamData.cs" />
     <Compile Include="../../../openswos/game/scripts/SwosVm/AnimationTablesData.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/SpriteUpdate.cs" />
-    <!-- PlayerActionsStub.cs (this directory) is auto-included by the SDK;
-         see its header comment for why SpriteUpdate.cs needs a stand-in
-         rather than the real PlayerActions.cs. -->
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/BallUpdate.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/BallOutOfPlay.cs" />
+    <!-- PlayerActionsStub.cs, MatchAudioStub.cs, PlayerUpdateStub.cs,
+         UpdateGoalsStub.cs (this directory) are auto-included by the SDK;
+         see each one's header comment for why BallUpdate.cs/
+         BallOutOfPlay.cs/SpriteUpdate.cs need a stand-in for those specific
+         types rather than their real (larger, Godot-dependent, or
+         deliberately-deferred) source files. -->
   </ItemGroup>
 
 </Project>
