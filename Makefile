@@ -56,3 +56,6 @@ test: $(TEST_BINS)
 
 clean:
 	rm -rf $(BUILD)
+	@echo "Note: this also removed build/golden/*.bin -- 'make test' will now"
+	@echo "FAIL test_golden_dump until you regenerate them:"
+	@echo "  cd tools/csharp-golden-dump && dotnet run -c Release -- ../../build/golden"

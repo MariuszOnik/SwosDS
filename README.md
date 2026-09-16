@@ -88,8 +88,7 @@ standing rule going forward.)
 
 ## Status (2026-09-15)
 
-Step 1 of the porting order (Memory / Flags / Rng / Tables) is **partially**
-done:
+Step 1 of the porting order (Memory / Flags / Rng / Tables) — done:
 
 | Module | State |
 |---|---|
@@ -98,7 +97,7 @@ done:
 | `swos_flags.{h,c}` (`Flags.cs`) | Done — full hand port |
 | `swos_rng.{h,c}` (`Rng.cs`) | Done — full hand port (both streams) |
 | `swos_memory.{h,c}` Read/Write helpers | Done — full hand port |
-| `swos_memory` `Init()` (`Memory.cs:1477-2271`, ~800 lines) | **Not ported.** It calls `PlayerSprite.Init()` / `AnimationTablesData.Init()` / `TeamData.Init()`, none of which exist here yet (those are step 2). Porting it now would mean stubbing those three calls, which would misrepresent this layer as more complete than it is. `swosMemoryInitStub()` (zero-fill only) stands in for now. |
+| `swos_memory` `Init()` (`Memory.cs:1477-2271`, ~800 lines) | Done — see "Status: step 2.5" below (ported once its `PlayerSprite.Init()`/`AnimationTablesData.Init()`/`TeamData.Init()` dependencies existed, and golden-dump verified). |
 
 `make test` builds and runs the smoke test (desktop-only; see Makefile
 comment for why it pins devkitPro's bundled mingw64 gcc as the *host*

@@ -1,6 +1,6 @@
 // SOURCE: openswos game/scripts/SwosVm/Memory.cs:2279-2318 (Read*/Write* helpers)
 // FIDELITY: VERIFIED_PC -- direct mechanical port, no logic changes.
-// See swos_memory.h for what's NOT yet ported (Memory.Init).
+// The full Memory.Init(bool pcMode) is ported separately in swos_memory_init.c.
 #include "swos_memory.h"
 
 #include <assert.h>

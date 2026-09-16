@@ -22,8 +22,8 @@ static int g_failures = 0;
 static uint8_t *readFile(const char *path, long *outLen) {
     FILE *f = fopen(path, "rb");
     if (!f) {
-        fprintf(stderr, "FAIL: could not open %s -- run the C# golden-dump harness first "
-                         "(see tools/csharp-golden-dump/README or this file's header comment)\n", path);
+        fprintf(stderr, "FAIL: could not open %s -- run the C# golden-dump harness first: "
+                         "cd tools/csharp-golden-dump && dotnet run -c Release -- ../../build/golden\n", path);
         g_failures++;
         return NULL;
     }
