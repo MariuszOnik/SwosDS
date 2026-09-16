@@ -56,14 +56,26 @@
     <Compile Include="../../../openswos/game/scripts/Sim/Port/Referee.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/Result.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/UpdateGoals.cs" />
+    <!-- Step 11 (GameLoop.cs's real local dependencies): Kickoff.cs,
+         Camera.cs, GameSprites.cs, SpinningLogo.cs, PlayerNameDisplay.cs,
+         Stats.cs. Bench.cs (1868 lines) stays a minimal BenchStub.cs
+         (InBench/InBenchMenus/GetBenchState only) until its own dedicated
+         port; GameLoop.cs's UpdateBench/CheckIfGoalkeeperClaimedTheBall
+         reach almost the entire file and are not a minimal-slice candidate. -->
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/Kickoff.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/Camera.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/GameSprites.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/SpinningLogo.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerNameDisplay.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/Stats.cs" />
     <!-- MatchAudioStub.cs, TeamDataLoaderStub.cs, PlayerControlledStub.cs,
-         GodotStub.cs, AiStub.cs, CameraStub.cs, BallSimStub.cs,
-         GameLoopStub.cs (this directory) are auto-included by the SDK; see
+         GodotStub.cs, AiStub.cs, BallSimStub.cs, GameLoopStub.cs,
+         BenchStub.cs (this directory) are auto-included by the SDK; see
          each one's header comment for why BallUpdate.cs/BallOutOfPlay.cs/
          SpriteUpdate.cs/PlayerActions.cs/PlayerUpdate.cs/PlayerTackle.cs/
-         UpdatePlayers.cs/GameTime.cs need a stand-in for those specific
-         types rather than their real (larger, Godot-dependent, or
-         deliberately-deferred) source files. -->
+         UpdatePlayers.cs/GameTime.cs/Camera.cs/SpinningLogo.cs need a
+         stand-in for those specific types rather than their real (larger,
+         Godot-dependent, or deliberately-deferred) source files. -->
   </ItemGroup>
 
   <ItemGroup>

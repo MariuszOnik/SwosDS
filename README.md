@@ -1124,6 +1124,100 @@ expansion this step).
 
 Closes the last deferred hook from step 4 (`swosRegisterScorerHook`).
 
+## Status: step 11A (2026-09-16) — real local dependencies of `GameLoop.cs`
+
+Comment-filtered dependency scan of `GameLoop.cs` (2045 lines) found it
+pulls in SEVEN previously-untouched files, ~3900 more lines total --
+substantially bigger than the porting-order list's one-line "`GameLoop`
+orchestration" suggested. Reported to the user before committing to the
+work (per the project's stop-and-report convention), then split like the
+step-7A/7B precedent: this step (11A) ports the six smaller/self-contained
+dependencies plus a minimal `Bench.cs` extension; step 11B will be
+`GameLoop.cs` itself; a dedicated full port of `Bench.cs` (see below) is
+its own step in between.
+
+| File | Lines | What `GameLoop.cs` calls | This step's scope |
+|---|---|---|---|
+| `Kickoff.cs` | 525 | `PrepareForInitialKick`, `ReseatTeamsForNewHalf` | minimal slice (~140 lines) |
+| `Camera.cs` | 573 | `MoveCamera`, `SetCameraX/Y` | full file |
+| `GameSprites.cs` | 314 | `UpdateCornerFlags`, `UpdateControlledPlayerNumbers` | full file |
+| `SpinningLogo.cs` | 95 | `UpdateSpinningLogo` | full file |
+| `PlayerNameDisplay.cs` | 231 | `UpdateCurrentPlayerName` | full file (minus pure text render) |
+| `Stats.cs` | 286 | `UpdateStatistics` | full file |
+| `Bench.cs` | 1868 | `UpdateBench`, `CheckIfGoalkeeperClaimedTheBall` | **not this step** — see below |
+
+**`Kickoff.cs` — minimal slice, not the whole 525-line file:**
+`include/swos_kickoff.h`/`src/swos_kickoff.c`. Only `PrepareForInitialKick()`
+(the no-arg overload — the `int` overload is a "PORT-COMPAT shim -- remove
+after Main.cs rewire" per its own comment, dead code) and
+`ReseatTeamsForNewHalf()` (+ 3 tiny private helpers) are real calls.
+Deliberately not ported: `StartingMatch`/`InitPlayersBeforeEnteringPitch`/
+`DetermineStartingTeamAndTeamPlayingUp` (match-boot-only, not called from
+anything ported yet; the latter duplicates
+`swosGameTimeDetermineStartingTeamAndTeamPlayingUp` from step 10) and the
+`KTeamsStartingCoordinates`/`BottomStartingPositions`/`TopStartingPositions`
+tables (the latter two already mechanically extracted in step 7B).
+
+**Camera.cs, GameSprites.cs, SpinningLogo.cs, PlayerNameDisplay.cs,
+Stats.cs — ported in full** (`include`/`src` `swos_camera`, `swos_game_sprites`,
+`swos_spinning_logo`, `swos_player_name_display`, `swos_stats`): each
+file's single public entry point (`MoveCamera`, `UpdateCornerFlags` +
+`UpdateControlledPlayerNumbers`, `UpdateSpinningLogo`,
+`UpdateCurrentPlayerName`, `UpdateStatistics`) reaches almost the entire
+private surface of its own file, so "minimal slice" wasn't available —
+these are small enough (95-573 lines) that a full port was the right size
+anyway. All five were already fully self-contained (`Memory`/`TeamData`/
+`PlayerSprite`/`BallSprite`/`Rng`/`Referee.CardHandingInProgress`/
+`Result.HideResult`, all already ported) except for one shared dependency:
+`Bench.InBench()`/`InBenchMenus()`/`GetBenchState()` — extended into the
+existing step-8 minimal `Bench.cs` slice (still just 3 tiny accessors, not
+the rest of the file).
+
+**Debug prints omitted, matching every prior step's telemetry pattern:**
+`GameSprites.UpdateControlledPlayerNumbers`'s debounced out-of-range-shirt
+diagnostic (`Godot.GD.PrintErr`) — the print is omitted, but the debounce
+state (`s_lastBadShirtOrdinal`) and the guarded branch that hides the digit
+instead of drawing a wrong number ARE ported, since that branch has a real
+`Memory` effect.
+
+**`Bench.cs` deliberately NOT ported this step:** checked whether
+`UpdateBench`/`CheckIfGoalkeeperClaimedTheBall` could get the same
+minimal-slice treatment as everything else here — they can't.
+`UpdateBench()` runs unconditionally every tick; its "not currently in the
+bench" branch alone (`BenchBlocked`/`BenchUnavailable`/
+`GetNonBenchControlsTeam`/`UpdateNonBenchControls`/`BenchInvoked`) already
+reaches most of the file's private surface, and the moment a human opens
+the substitutes menu it needs the full menu/substitution FSM.
+`UpdateBench()` also hosts `UpdateSubstitutedPlayerWalk()` — a real
+per-tick gameplay FSM that `UpdatePlayers.cs` (step 7B) deliberately left
+as a TODO, relocated here per its own comment. This is a real, whole-file
+dependency (1868 lines) — its own dedicated step, between this one and
+11B (`GameLoop.cs` itself).
+
+**Differential tests, full VM/Memory state, every public entry point of
+all six modules touched this step:**
+`tools/csharp-golden-dump/Step11AGolden.cs`, 40 scenarios — `Kickoff`
+(both starting-team branches of `PrepareForInitialKick`, the team-identity
+swap in `ReseatTeamsForNewHalf`), `Camera` (accessors, the fans-counter
+early-out, the (0,0) self-heal, all five `MoveCamera` mode branches --
+booking/penalty-shootout/bench/leaving-bench/standard -- and three
+`StandardMode` sub-branches -- follow-ball/waiting-for-players/result-
+screens --, `SetCameraToInitialPosition`, `SwitchCameraToLeavingBenchMode`),
+`GameSprites` (corner-flag animation, the controlled-player-number gate/
+shown/marked-hidden paths, the face-offset helpers), `SpinningLogo`
+(disabled, spinning, blocked-by-bench-menus), `PlayerNameDisplay` (scorer
+blinking, card blinking, prolong-last-before-goalkeeper, in-progress
+show/hide, stopped hide-first-frame/prolong), `Stats` (init, both toggle
+branches, possession bump, goal-attempt registration, penalties skip,
+auto-hide), and the `Bench.InBenchMenus` extension (both state branches).
+`tests/test_step11a_golden.c` replays each scenario through the C port and
+byte-compares the full `0x60000` buffer.
+
+**40/40 match byte-for-byte, first run.** `make test` (fourteen suites):
+**409/409** pass (26 + 44 + 2 + 40 + 25 + 31 + 45 + 12 + 24 + 11 + 23 + 27 +
+59 + 40). ARM9/BlocksDS cross-compile: clean, zero warnings, `.nds` built
+successfully (build-only check).
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
@@ -1168,7 +1262,17 @@ Closes the last deferred hook from step 4 (`swosRegisterScorerHook`).
     `GameLoop.PlayersLeavingPitch` (`swos_game_loop.h`/`.c`),
     `BallSim.CurrentPitchType` (a plain C global in `swos_game_time.c`).
 11. `GameLoop` orchestration -- `PlayersLeavingPitch` already forward-pulled
-    (step 10); the rest of the ~1900+-line file is still this step's to do.
+    (step 10). Split (like steps 7A/7B) after its own dependency scan found
+    ~3900 more lines across 7 new files:
+    - ~~11A: real local dependencies -- `Kickoff.cs` (minimal slice),
+      `Camera.cs`, `GameSprites.cs`, `SpinningLogo.cs`,
+      `PlayerNameDisplay.cs`, `Stats.cs` (all full ports), plus a minimal
+      `Bench.cs` extension (`InBenchMenus`/`GetBenchState`)~~ (2026-09-16,
+      see Status above)
+    - `Bench.cs` full port (1868 lines -- `UpdateBench`/
+      `CheckIfGoalkeeperClaimedTheBall` reach almost the entire file, not a
+      minimal-slice candidate; see step 11A's status entry)
+    - 11B: `GameLoop.cs` itself (2045 lines)
 12. Adapter from VM state to the DS renderer (mirrors `swos-ds`'s
     `game_state.c` `swosTick()` boundary)
 
