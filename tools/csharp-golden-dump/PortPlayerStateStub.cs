@@ -5,6 +5,12 @@
 //
 // Copied VERBATIM from the real
 // openswos/game/scripts/Sim/Port/UpdatePlayers.cs:4330-4348.
+//
+// SUPERSEDED as of step 7B: UpdatePlayers.cs itself is now compiled in
+// (golden-dump.csproj), which defines the real enum -- this file is
+// excluded from compilation there (`<Compile Remove="PortPlayerStateStub.cs" />`)
+// to avoid a duplicate-definition error. Left in place (not deleted) purely
+// as the historical record of step 5.5's forward-pull.
 namespace OpenSwos.Sim.Port;
 
 public enum PortPlayerState : byte

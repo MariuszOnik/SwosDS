@@ -32,5 +32,6 @@ PlayerActionsGolden.Run(outDir);
 PlayerUpdateGolden.Run(outDir);
 PlayerControlledGolden.Run(outDir);
 Step7AGolden.Run(outDir);
+Step7BGolden.Run(outDir);
 
 return 0;

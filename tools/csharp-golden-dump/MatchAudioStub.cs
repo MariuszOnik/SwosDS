@@ -45,4 +45,7 @@ public static class MatchAudio
     public static void PlayFoulWhistle() { }
     public static void PenaltyComment() { }
     public static void FoulComment() { }
+
+    // Added for step 7B (UpdatePlayers.cs) -- same rationale as above.
+    public static void KeeperSavedComment() { }
 }

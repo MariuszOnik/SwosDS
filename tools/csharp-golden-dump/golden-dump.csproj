@@ -44,17 +44,22 @@
     <Compile Include="../../../openswos/game/scripts/Sim/Port/BallVariables.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerHeader.cs" />
     <Compile Include="../../../openswos/game/scripts/Sim/Port/PlayerTackle.cs" />
+    <Compile Include="../../../openswos/game/scripts/Sim/Port/UpdatePlayers.cs" />
     <!-- MatchAudioStub.cs, UpdateGoalsStub.cs, TeamDataLoaderStub.cs,
          PlayerControlledStub.cs, GodotStub.cs, AiStub.cs, CameraStub.cs,
-         RefereeStub.cs (this directory) are auto-included by the SDK; see
-         each one's header comment for why BallUpdate.cs/BallOutOfPlay.cs/
-         SpriteUpdate.cs/PlayerActions.cs/PlayerUpdate.cs/PlayerTackle.cs
-         need a stand-in for those specific types rather than their real
-         (larger, Godot-dependent, or deliberately-deferred) source files. -->
+         RefereeStub.cs, SetPiecesStub.cs (this directory) are auto-included
+         by the SDK; see each one's header comment for why BallUpdate.cs/
+         BallOutOfPlay.cs/SpriteUpdate.cs/PlayerActions.cs/PlayerUpdate.cs/
+         PlayerTackle.cs/UpdatePlayers.cs need a stand-in for those specific
+         types rather than their real (larger, Godot-dependent, or
+         deliberately-deferred) source files. -->
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="PlayerControlledStub.cs" />
+    <!-- UpdatePlayers.cs (added above, step 7B) now provides the real
+         PortPlayerState enum, so the step-5.5 stand-in would collide. -->
+    <Compile Remove="PortPlayerStateStub.cs" />
   </ItemGroup>
 
 </Project>

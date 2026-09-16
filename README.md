@@ -707,6 +707,125 @@ sites.
 **24/24 match byte-for-byte, first run.** `make test` (nine suites):
 **249/249** pass (26 + 44 + 2 + 40 + 25 + 31 + 45 + 12 + 24).
 
+## Status: step 7B (2026-09-16) — `UpdatePlayers.cs` itself
+
+The main per-team-per-tick orchestrator (4349 lines, ~24 functions, ~40
+literal position tables) -- `swosUpdatePlayersUpdate(teamIndex)`
+(`include/swos_update_players.h`, `src/swos_update_players.c`) mirrors
+`Update(teamIndex)`'s goto-heavy control flow exactly: per-team timer
+decay, `applyBallAfterTouch` + ball-location flags, the 11-player loop
+(direction/`isMoving` copy, energy drain, `TACKLED`/`ROLLING_INJURED`
+early-outs, ball-distance/height buckets, `DispatchByPlayerState`), and the
+post-loop keeper-transition epilogue. Every other function stayed
+`private static` in the C#, so it ports to a `static` file-local C function
+in the same translation unit -- `checkIfThisPlayerGettingBooked`,
+`tickGoalkeeper`, `runGoalkeeperInAreaChain` (the ~370-line
+`l_ball_in_penalty_area`..`l_clamp_ball_y_inside_pitch` goto chain, largest
+single function in the port so far), `runGoalieCantCatchBallPickup`,
+`tickGoalieDiving` (including the dive-outcome verdict/claim/parry/weak-touch
+chain), `goalkeeperRise`, `tickHumanControlled`, `overrideDestToBallIfChaser`,
+`tickAiControlled` (CPU-team gate + stoppage tail), `setPlayerPositionsForGameBreak`,
+`setPlayerWithNoBallDestinationForBreak`, `tickPassExpectingStopped`,
+`tickTackledPlayer`, `tickTacklingPlayer`, `tickInjuredRollingPlayer`,
+`updatePlayerBallDistanceAndHeight`, `tickEpilogueKeeperTransition`,
+`ownGoaliePlayersBase`, `headerExitToNormal`, `tickJumpHeader`,
+`tickStaticHeader`, `dispatchByPlayerState`.
+
+**Literal tables, mechanically extracted:** all ~40 flat `short[]` position
+tables (`kFreeKickFactorsX`, `kBottomStartingPositions`/`kTopStartingPositions`,
+the `kDseg17Exxxx` foul-relative/corner/throw-in/penalty tables,
+`kPlayersLeavingPitchTop`/`Bottom`, the second-half-restart and penalty-ring
+tables) via `tools/extract_all_arrays.py` (the same batch flat-array
+extractor from step 2.5) into `include/generated/swos_update_players_tables.h`
+-- no hand-retyped numbers. The two nullable *jagged* dispatch tables
+(`kTopBallOutOfPlayPositions`/`kBottomBallOutOfPlayPositions`, C#
+`short[]?[]`) have no extractor support (`extract_table.py`'s brace-balanced
+parser only handles flat arrays), so their *index-to-table-name* mapping is
+hand-written in `swos_update_players.c` as `static const int16_t *const
+[32]` arrays of pointers into the mechanically-extracted flat tables (plus
+`NULL` at the C#'s `null` slots) -- the pointer *structure* is hand-placed,
+but every numeric value it points at is still 100% mechanically extracted.
+
+**Two deferred, assert-backed hook boundaries (not silent no-ops):**
+- `AiBrain.SetControlsDirection`/`AiHelpers.AI_Kick` (step 9) reuse the
+  *existing* `g_swosAiSetControlsDirectionHook`/`g_swosAiKickHook` globals
+  from `swos_player_controlled.h` (established step 6A) -- no new hook
+  infrastructure, just two more call sites wired to the same globals.
+- `SetPieces.SetThrowInPlayerDestinationCoordinates`/`SetPieces.TickThrowIn`
+  (step 10) are a **new** hook pair, `include/swos_set_pieces.h` +
+  `src/swos_set_pieces.c`, mirroring the 6A assert-then-call convention
+  exactly (`assert(hook != NULL && "... requires step 10"); if (hook)
+  hook(...);`). Both are real, comment-filtered-grep-verified executed
+  calls (`SetThrowInPlayerDestinationCoordinates` from
+  `tickPassExpectingStopped`'s throw-in tail, `TickThrowIn` from the
+  `PLSTATE_THROW_IN` dispatch arm) -- not comment-only references.
+
+**Design decision, documented not silently dropped:** the C# wraps three
+calls to `PlayerHeader.SetPlayerWithNoBallDestination` in `try { } catch
+(System.Exception) { }` (C has no exceptions). The port calls
+`swosSetPlayerWithNoBallDestination` directly, unguarded -- realistic
+bounded `tacticsIdx`/ordinal values keep every reachable access in-bounds
+(tactics are always seeded before `Update()` runs), and the C#'s own catch
+body is a documented no-op (or, in one case, an explicit "must NOT return,
+the pushback below still has to run" fall-through, which the unconditional
+direct call already reproduces without needing the try/catch at all). See
+`include/swos_update_players.h`'s header comment.
+
+**Comment-filtered dependency audit (whole file):** re-ran the same
+methodology as step 7A across all 4349 lines. Confirmed real: `TeamData`/
+`PlayerSprite`/`BallSprite` accessors, `PlayerActions.*`, `PlayerEnergy.DrainSlot`,
+`BallVariables.*`, `TeamPort.UpdatePlayerShotChanceTable`, `PlayerUpdate.*`
+(goalkeeper chain), `PlayerControlled.RunControlledBranch`/
+`RunPassReceiptTrigger`/`RunPassExpectingBranch`, `PlayerHeader.*`,
+`PlayerTackle.*`, `AiBrain.SetControlsDirection`, `AiHelpers.AI_Kick`, and
+the two `SetPieces` calls above. Confirmed comment-only (per the user's
+explicit rule, not pulled in): `InputControls.UpdateControlledPlayer`,
+`Referee.UpdateReferee`, `Kickoff.PrepareForInitialKick`,
+`UpdateGoals.UpdatePostGoalRestart`. Audio (`MatchAudio.KeeperSavedComment`/
+`PlayMissGoal`, both in `tickGoalieDiving`'s dive-outcome tail) and one more
+telemetry call (`Referee.NotifyEnteredAboutToGiveCard`, `DbgEnteredAboutToGive++`
+only) omitted after reading their bodies -- zero `Memory`/control-flow
+effect, same standard as every prior step.
+
+**`s_zeroTicksTop`/`Bot`, `s_carrierStallTicksTop`/`Bot` kept as real C
+statics** -- port-only but gameplay-affecting debounce counters that gate a
+real `Memory` write (the `controlledPlayer` re-election heuristic and the
+teammate-hysteresis stall safety net), not telemetry despite living next to
+telemetry-looking counters. `swosUpdatePlayersResetState()` resets them
+between differential-test scenarios. `kChaseFallbackEnabled` (C# `const
+bool`, currently `false`, gating a whole disabled-but-retained A/B heuristic
+block) ports to `#define K_CHASE_FALLBACK_ENABLED 0` guarding a **runtime**
+`if`, not `#if` -- the dead branch stays compiled and warning-checked so
+flipping the `#define` to re-run the A/B can't silently bit-rot. Every
+other C#-side telemetry counter in this file (`s_fallbackChasesTop`/`Bot`,
+`s_kickFallbackTop`/`Bot` and its zone splits, `s_reaimAppliedTop`/`Bot`,
+and their public getters -- `Main.cs` smoke-test reporting only) is omitted,
+verified zero `Memory` effect.
+
+**Differential tests, full VM/Memory state, through the ONE public entry
+point:** every other function in `UpdatePlayers.cs` stayed `private static`
+in the C#, so (unlike step 7A) per-function golden dumps aren't possible --
+`tools/csharp-golden-dump/Step7BGolden.cs` instead seeds full match state
+per scenario so `Update(teamIndex)`'s 11-player loop routes one targeted
+sprite through the specific handler under test, while the other 10 take the
+safe default. 11 scenarios: full in-progress orchestration (both teams),
+a kickoff-stoppage tick exercising `setPlayerPositionsForGameBreak` +
+both `kTop`/`kBottomBallOutOfPlayPositions` tables (both teams), and one
+each for `tickTackledPlayer`, `tickTacklingPlayer`, `tickInjuredRollingPlayer`,
+`tickJumpHeader`, `tickStaticHeader`, `tickGoalieDiving` (rise path), and
+`checkIfThisPlayerGettingBooked`'s walk-to-referee branch. Every scenario
+sets both teams' `playerNumber` to a human value -- deliberate, not a
+coverage gap: every step-9/step-10 hook call site is gated on `playerNumber
+== 0` (CPU team) or a throw-in state neither reaches, so this is what keeps
+every scenario clear of both deferred-hook boundaries, exactly like 6A's
+human-only scope before it. `tests/test_step7b_golden.c` replays each setup
+through the C port and byte-compares the full buffer.
+
+**11/11 match byte-for-byte, first run.** `make test` (ten suites):
+**260/260** pass (26 + 44 + 2 + 40 + 25 + 31 + 45 + 12 + 24 + 11). ARM9/
+BlocksDS cross-compile (`nds-checkpoint/`, same `-Wall` flags): clean, zero
+warnings, `.nds` built successfully.
+
 ## Porting order (full plan, revised 2026-09-16 after step 4's file-graph discovery)
 
 1. ~~Memory, types, CPU flags, tables, RNG~~ (2026-09-15, see Status above)
@@ -737,10 +856,10 @@ sites.
      `PlayerEnergy` extensions, and the rest of `PlayerHeader.cs`/
      `PlayerTackle.cs` (both now fully ported)~~ (2026-09-16, see Status
      above)
-   - 7B: `UpdatePlayers.cs` itself (4349 lines) — AI branches keep asserting
-     to step 9 (same hook pattern as 6A/6B); `SetPieces`/`Referee`'s
-     per-tick pieces this file also touches get the same assert-backed
-     `PORT_PENDING` treatment, replaced in step 10 — never a silent no-op.
+   - ~~7B: `UpdatePlayers.cs` itself (4349 lines) — AI branches assert to
+     step 9 (reusing 6A's hook globals); the two real `SetPieces` calls
+     this file makes get a new assert-backed hook pair, replaced in step
+     10 — never a silent no-op~~ (2026-09-16, see Status above)
 8. `InputControls`
 9. `AiHelpers`, `AiBrain`
 10. `SetPieces`, `GameTime`, `Referee` — `GameTime.cs` also unblocks

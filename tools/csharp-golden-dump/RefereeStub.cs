@@ -23,6 +23,13 @@ using OpenSwos.SwosVm;
 
 public static class Referee
 {
+    // Real Referee.cs:136-139 -- pure C#-side telemetry (DbgEnteredAboutToGive++
+    // only), zero Memory effect. UpdatePlayers.cs (step 7B) calls this from
+    // CheckIfThisPlayerGettingBooked; the counter itself is omitted on the C
+    // side too (see swos_update_players.c) -- kept here as a true no-op so
+    // this stub's behaviour matches what the omission assumes.
+    public static void NotifyEnteredAboutToGiveCard() { }
+
     public static void ActivateReferee()
     {
         short foulX = Memory.ReadSignedWord(Memory.Addr.foulXCoordinate);
